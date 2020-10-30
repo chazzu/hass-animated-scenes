@@ -80,7 +80,7 @@ class AnimatedScenes:
 
         self.store_state(scene.lights)
         self.active_scene = scene.entity_id
-        scene.initialize()
+        await scene.initialize()
 
     def add_scene(self, scene):
         self.scenes[scene.entity_id] = scene

@@ -124,12 +124,12 @@ class AnimatedSceneSwitch(SwitchEntity):
                 self._weights.append(color['weight'])
         GLOBAL_SCENES.add_scene(self)
 
-    def turn_on(self, **kwargs: vol.Any) -> None:
+    async def async_turn_on(self, **kwargs: vol.Any) -> None:
         if not self._state:
             self._state = True
-            self.hass.loop.create_task(GLOBAL_SCENES.activate_scene(self))
             self._state_change_listener = async_track_state_change_event(self.hass, self.lights,
                                                                          self.external_light_change)
+            await GLOBAL_SCENES.activate_scene(self)
 
     async def external_light_change(self, event):
         entity_id = event.data.get('entity_id')
@@ -140,45 +140,45 @@ class AnimatedSceneSwitch(SwitchEntity):
                 stored_state[entity_id] = self.hass.states.get(entity_id)
             await self.set_initial_active_state([entity_id])
 
-    def turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs) -> None:
         if self._task:
             self._task.cancel()
-        if self._state_change_listener:
+            self._task = None
+        if self._state_change_listener is not None:
             self._state_change_listener()
+            self._state_change_listener = None
         self._state = False
         self._light_status = {}
-        self.hass.loop.create_task(GLOBAL_SCENES.deactivate_scene(self))
+        await GLOBAL_SCENES.deactivate_scene(self)
 
-    def initialize(self):
-        self.hass.loop.create_task(self.set_initial_active_state(self.lights))
+    async def initialize(self):
+        await self.set_initial_active_state(self.lights)
         if not self._change_frequency:
             return
         if not self._task:
-            self._task = self.hass.loop.create_task(self.update())
+            self._task = asyncio.get_event_loop().create_task(self.animate())
 
-    async def update(self) -> None:
+    async def animate(self):
         try:
-            if not self.is_on:
-                self._task.cancel()
+            while self.is_on:
+                await self.update_lights()
+                frequency = self._get_change_frequency()
+                await asyncio.sleep(frequency)
+        except CancelledError:
+            pass
+
+    async def update_lights(self):
+        if self._change_amount == 'all':
+            change_amount = len(self.lights)
+        else:
+            change_amount = _get_static_or_random(self._change_amount)
+            if change_amount <= 0:
                 return
 
-            if self._change_amount == 'all':
-                change_amount = len(self.lights)
-            else:
-                change_amount = _get_static_or_random(self._change_amount)
-                if change_amount <= 0:
-                    return
+        lights_to_change = self._pick_lights(change_amount)
 
-            lights_to_change = self._pick_lights(change_amount)
-
-            for light in lights_to_change:
-                await self.hass.services.async_call(LIGHT_DOMAIN, SERVICE_TURN_ON, self._build_light_attributes(light))
-
-            frequency = self._get_change_frequency()
-            await asyncio.sleep(frequency)
-            self.hass.loop.create_task(self.update())
-        except CancelledError as err:
-            pass
+        for light in lights_to_change:
+            await self.hass.services.async_call(LIGHT_DOMAIN, SERVICE_TURN_ON, self._build_light_attributes(light))
 
     def _pick_lights(self, change_amount):
         if self._ignore_off:
