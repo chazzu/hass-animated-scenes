@@ -21,6 +21,17 @@ I have only tested this with my own system as of now. I do plan on fixing any bu
 
 ### Configuration 
 
+First, we configure the Animated Scenes component:
+
+```yaml
+animated_scenes:
+    external_switches: # optional; list of entities to turn off when activating a scene
+    - switch.circadian_lighting_circadian_light
+    - switch.flux_light 
+```
+
+Then add scenes you want to set up:
+
 ```yaml
 switch
 - platform: animated_scenes
@@ -44,7 +55,6 @@ switch
   animate_brightness: True # defaults to true to change brightness level
   animate_color: True # defaults to true to change color
 ```
-
 
 ### Sample Configurations
 I did this initially to create an animation that mimics the Haunted House animation for Philips Hue but give me greater control. Here is the setting I settled on:
