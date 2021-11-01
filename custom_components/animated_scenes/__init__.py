@@ -1,9 +1,10 @@
 """The Animated Scenes integration."""
+from __future__ import annotations
+
 import asyncio
 
-import voluptuous as vol
-
 import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 from homeassistant.components.light import (
     DOMAIN as LIGHT_DOMAIN, ATTR_RGB_COLOR, ATTR_XY_COLOR, ATTR_COLOR_TEMP, ATTR_HS_COLOR,
     ATTR_KELVIN)
@@ -14,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import SERVICE_TURN_ON, SERVICE_TURN_OFF
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change_event
+
 from .const import DOMAIN, CONF_EXTERNAL_SWITCHES
 
 CONFIG_SCHEMA = vol.Schema({DOMAIN: vol.Schema({
@@ -25,11 +27,11 @@ PLATFORMS = ["switch"]
 
 async def async_setup(hass: HomeAssistant, config: dict):
     try:
-        switches = config.get(DOMAIN).get(CONF_EXTERNAL_SWITCHES)    
+        switches = config.get(DOMAIN).get(CONF_EXTERNAL_SWITCHES)
         if switches:
             GLOBAL_SCENES.add_switches(switches)
-    except Exception:
-        print("Oh well")
+    finally:
+        pass
     await GLOBAL_SCENES.set_hass(hass)
     return True
 
@@ -60,11 +62,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
 
 class AnimatedScenes:
     def __init__(self):
-        self.hass: HomeAssistant = None
         self.switches = []
         self.scenes = {}
         self.active_scene = None
         self.stored_state = {}
+        self._unique_id = "foo"
+        self.hass: HomeAssistant | None
 
     async def activate_scene(self, scene):
         if not self.hass:

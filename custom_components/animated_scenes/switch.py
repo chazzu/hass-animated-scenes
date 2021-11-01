@@ -3,7 +3,7 @@ from asyncio import CancelledError
 from random import randrange, sample, choices, choice
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import SERVICE_TURN_ON
+from homeassistant.const import SERVICE_TURN_ON, CONF_UNIQUE_ID
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import slugify
 from . import GLOBAL_SCENES
@@ -21,6 +21,7 @@ DEPENDENCIES = ['animated_scenes', 'light']
 
 PLATFORM_SCHEMA = vol.Schema({
     vol.Required(CONF_PLATFORM): 'animated_scenes',
+    vol.Required(CONF_UNIQUE_ID, default=""): cv.string,
     vol.Optional(CONF_NAME, default="Animated Scene"): cv.string,
     vol.Optional(CONF_LIGHTS): cv.entity_ids,
     vol.Optional(CONF_IGNORE_OFF, default=True): bool,
@@ -93,6 +94,11 @@ class AnimatedSceneSwitch(SwitchEntity):
     @property
     def entity_id(self):
         """Return the entity ID of the switch."""
+        return self._entity_id
+
+    @property
+    def unique_id(self) -> str:
+        """Return unique ID for the entity."""
         return self._entity_id
 
     @property

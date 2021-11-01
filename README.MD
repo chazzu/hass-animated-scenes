@@ -96,3 +96,5 @@ switch:
     change_frequency: 5
     change_amount: 6
 ```
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
