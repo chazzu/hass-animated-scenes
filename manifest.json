@@ -2,7 +2,8 @@
   "domain": "animated_scenes",
   "name": "Animated Scenes",
   "documentation": "https://github.com/chazzu/hass-animated-scenes",
-  "version": "1.0.2",
+  "requirements": [],
+  "dependencies": [],
   "codeowners": [
     "@chazzu"
   ]
