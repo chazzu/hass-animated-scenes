@@ -24,9 +24,12 @@ PLATFORMS = ["switch"]
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
-    switches = config.get(DOMAIN).get(CONF_EXTERNAL_SWITCHES)
-    if switches:
-        GLOBAL_SCENES.add_switches(switches)
+    try:
+        switches = config.get(DOMAIN).get(CONF_EXTERNAL_SWITCHES)    
+        if switches:
+            GLOBAL_SCENES.add_switches(switches)
+    except Exception:
+        print("Oh well")
     await GLOBAL_SCENES.set_hass(hass)
     return True
 
