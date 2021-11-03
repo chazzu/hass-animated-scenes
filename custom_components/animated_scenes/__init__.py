@@ -30,7 +30,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
         switches = config.get(DOMAIN).get(CONF_EXTERNAL_SWITCHES)
         if switches:
             GLOBAL_SCENES.add_switches(switches)
-    finally:
+    except AttributeError:
         pass
     await GLOBAL_SCENES.set_hass(hass)
     return True
