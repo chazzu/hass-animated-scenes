@@ -1,21 +1,18 @@
 import asyncio
 from asyncio import CancelledError
-from random import randrange, sample, choices, choice
+from random import randrange, sample, choices
 
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
+from homeassistant.components.light import (
+    DOMAIN as LIGHT_DOMAIN)
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import SERVICE_TURN_ON, CONF_UNIQUE_ID
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import slugify
-from . import GLOBAL_SCENES
-from .const import CONF_PLATFORM, CONF_NAME, CONF_LIGHTS, CONF_IGNORE_OFF, CONF_RESTORE, CONF_BRIGHTNESS, CONF_COLORS, \
-    CONF_COLOR_TYPE, CONF_COLOR_RGB, CONF_COLOR_XY, CONF_COLOR_HS, CONF_COLOR_TEMP, CONF_TRANSITION, \
-    CONF_CHANGE_FREQUENCY, CONF_CHANGE_AMOUNT, CONF_COLOR, CONF_WEIGHT, CONF_ONE_CHANGE_PER_TICK, \
-    CONF_ANIMATE_BRIGHTNESS, CONF_ANIMATE_COLOR
 
-import voluptuous as vol
-import homeassistant.helpers.config_validation as cv
-from homeassistant.components.light import (
-    DOMAIN as LIGHT_DOMAIN)
+from . import GLOBAL_SCENES
+from .const import *
 
 DEPENDENCIES = ['animated_scenes', 'light']
 
