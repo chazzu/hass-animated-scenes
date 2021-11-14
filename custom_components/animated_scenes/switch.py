@@ -44,7 +44,7 @@ PLATFORM_SCHEMA = vol.Schema({
             vol.Optional(CONF_ONE_CHANGE_PER_TICK, default=False): bool
         }), vol.Schema({
             vol.Required(CONF_COLOR_TYPE): CONF_COLOR_TEMP,
-            vol.Required(CONF_COLOR): vol.All(vol.Coerce(int), vol.Range(min=0, max=250)),
+            vol.Required(CONF_COLOR): vol.All(vol.Coerce(int), vol.Range(min=0, max=500)),
             vol.Optional(CONF_BRIGHTNESS): vol.Any(vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])),
             vol.Optional(CONF_WEIGHT, default=10): vol.Range(min=0, max=255),
             vol.Optional(CONF_ONE_CHANGE_PER_TICK, default=False): bool
