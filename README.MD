@@ -53,6 +53,7 @@ switch
   transition: 2 # take 2 seconds to transition
   change_frequency: 15 # change lights every 15 seconds
   change_amount: all # change all lights every time
+  change_sequence: True # instead of choosing a color randomly, choose in sequence
   animate_brightness: True # defaults to true to change brightness level
   animate_color: True # defaults to true to change color
 ```

@@ -54,6 +54,7 @@ PLATFORM_SCHEMA = vol.Schema({
     vol.Optional(CONF_TRANSITION, default=1): vol.Any(vol.Range(min=0, max=60), vol.All([vol.Range(min=0, max=60)])),
     vol.Optional(CONF_CHANGE_FREQUENCY): vol.Any(vol.Range(min=0, max=60), vol.All([vol.Range(min=0, max=60)])),
     vol.Optional(CONF_CHANGE_AMOUNT): vol.Any('all', vol.Range(min=0, max=10), vol.All([vol.Range(min=0, max=10)])),
+    vol.Optional(CONF_CHANGE_SEQUENCE, default=False): bool,
     vol.Optional(CONF_ANIMATE_BRIGHTNESS, default=True): bool,
     vol.Optional(CONF_ANIMATE_COLOR, default=True): bool,
     vol.Optional(CONF_BRIGHTNESS): vol.Any(vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)]))
@@ -74,8 +75,9 @@ def setup_platform(hass, config, add_entities, _unused):
     animate_brightness = config.get(CONF_ANIMATE_BRIGHTNESS)
     animate_color = config.get(CONF_ANIMATE_COLOR)
     restore_power = config.get(CONF_RESTORE_POWER)
+    sequence = config.get(CONF_CHANGE_SEQUENCE)
     switch = AnimatedSceneSwitch(hass, name, lights, brightness, colors, transition, change_frequency, change_amount,
-                                 restore, ignore_off, animate_brightness, animate_color, restore_power)
+                                 restore, ignore_off, animate_brightness, animate_color, restore_power, sequence)
     add_entities([switch])
 
 
@@ -101,7 +103,7 @@ class AnimatedSceneSwitch(SwitchEntity):
         return self._name
 
     def __init__(self, hass, name, lights, brightness, colors, transition, change_frequency, change_amount, restore,
-                 ignore_off, animate_brightness, animate_color, restore_power):
+                 ignore_off, animate_brightness, animate_color, restore_power, sequence):
         self.hass = hass
         self.lights = lights
         self.restore = restore
@@ -114,12 +116,14 @@ class AnimatedSceneSwitch(SwitchEntity):
         self._state = None
         self._ignore_off = ignore_off
         self._task = None
+        self._sequence = sequence
         self.entity_id = "switch." + slugify("{} {}".format('animated_scene', name))
         self._state_change_listener = None
         self._weights = []
         self._light_status = {}
         self._animate_color = animate_color
         self._animate_brightness = animate_brightness
+        self._current_color_index = 0
         self._restore_power = restore_power
         for color in colors:
             if 'weight' in color:
@@ -178,6 +182,10 @@ class AnimatedSceneSwitch(SwitchEntity):
                 return
 
         lights_to_change = self._pick_lights(change_amount)
+        if (self._sequence):
+            self._current_color_index += 1
+        if (self._current_color_index >= len(self._colors)):
+            self._current_color_index = 0
 
         for light in lights_to_change:
             await self.hass.services.async_call(LIGHT_DOMAIN, SERVICE_TURN_ON, self._build_light_attributes(light))
@@ -205,7 +213,11 @@ class AnimatedSceneSwitch(SwitchEntity):
                     'brightness': _get_static_or_random(self._light_status[light]['brightness'])
                 }
 
-        color = self._pick_color()
+        if (self._sequence):
+            color = self._colors[self._current_color_index]
+        else:
+            color = self._pick_color()
+
         attributes = {
             'entity_id': light,
             'transition': self._get_transition(),
