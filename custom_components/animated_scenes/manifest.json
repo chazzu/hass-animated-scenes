@@ -4,7 +4,7 @@
   "documentation": "https://github.com/chazzu/hass-animated-scenes",
   "requirements": [],
   "dependencies": [],
-  "version": "0.0.1",
+  "version": "0.0.2",
   "codeowners": [
     "@chazzu"
   ]
