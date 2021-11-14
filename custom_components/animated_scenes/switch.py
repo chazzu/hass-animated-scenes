@@ -23,6 +23,7 @@ PLATFORM_SCHEMA = vol.Schema({
     vol.Optional(CONF_LIGHTS): cv.entity_ids,
     vol.Optional(CONF_IGNORE_OFF, default=True): bool,
     vol.Optional(CONF_RESTORE, default=True): bool,
+    vol.Optional(CONF_RESTORE_POWER, default=False): bool,
     vol.Optional(CONF_COLORS, default=[]): vol.All(
         cv.ensure_list, [vol.Any(vol.Schema({
             vol.Required(CONF_COLOR_TYPE): CONF_COLOR_RGB,
@@ -72,8 +73,9 @@ def setup_platform(hass, config, add_entities, _unused):
     ignore_off = config.get(CONF_IGNORE_OFF)
     animate_brightness = config.get(CONF_ANIMATE_BRIGHTNESS)
     animate_color = config.get(CONF_ANIMATE_COLOR)
+    restore_power = config.get(CONF_RESTORE_POWER)
     switch = AnimatedSceneSwitch(hass, name, lights, brightness, colors, transition, change_frequency, change_amount,
-                                 restore, ignore_off, animate_brightness, animate_color)
+                                 restore, ignore_off, animate_brightness, animate_color, restore_power)
     add_entities([switch])
 
 
@@ -88,22 +90,18 @@ class AnimatedSceneSwitch(SwitchEntity):
     def is_on(self) -> bool:
         return self._state
 
-    @property
-    def entity_id(self):
-        """Return the entity ID of the switch."""
-        return self._entity_id
 
     @property
     def unique_id(self) -> str:
         """Return unique ID for the entity."""
-        return self._entity_id
+        return self.entity_id
 
     @property
     def name(self) -> str:
         return self._name
 
     def __init__(self, hass, name, lights, brightness, colors, transition, change_frequency, change_amount, restore,
-                 ignore_off, animate_brightness, animate_color):
+                 ignore_off, animate_brightness, animate_color, restore_power):
         self.hass = hass
         self.lights = lights
         self.restore = restore
@@ -116,12 +114,13 @@ class AnimatedSceneSwitch(SwitchEntity):
         self._state = None
         self._ignore_off = ignore_off
         self._task = None
-        self._entity_id = "switch." + slugify("{} {}".format('animated_scene', name))
+        self.entity_id = "switch." + slugify("{} {}".format('animated_scene', name))
         self._state_change_listener = None
         self._weights = []
         self._light_status = {}
         self._animate_color = animate_color
         self._animate_brightness = animate_brightness
+        self._restore_power = restore_power
         for color in colors:
             if 'weight' in color:
                 self._weights.append(color['weight'])

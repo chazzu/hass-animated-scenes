@@ -22,6 +22,7 @@ CONF_NAME = 'name'
 CONF_ONE_CHANGE_PER_TICK = 'one_change_per_tick'
 CONF_PLATFORM = 'platform'
 CONF_RESTORE = 'restore'
+CONF_RESTORE_POWER = 'restore_power'
 CONF_TRANSITION = 'transition'
 CONF_WEIGHT = 'weight'
 

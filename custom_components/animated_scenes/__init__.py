@@ -84,7 +84,7 @@ class AnimatedScenes:
 
         await self.turn_off_all(scene.entity_id)
 
-        self.store_state(scene.lights)
+        self.store_state(scene)
         self.active_scene = scene.entity_id
         await scene.initialize()
 
@@ -108,12 +108,12 @@ class AnimatedScenes:
         self.hass = hass
         async_track_state_change_event(hass, self.switches, self.external_switch_changed)
 
-    def store_state(self, lights):
+    def store_state(self, scene):
         if not self.hass:
             return
 
-        for light in lights:
-            if light not in self.stored_state and self.hass.states.get(light).state != 'off':
+        for light in scene.lights:
+            if light not in self.stored_state and (self.hass.states.get(light).state != 'off' or scene._restore_power):
                 self.stored_state[light]: State = self.hass.states.get(light)
 
     async def restore_state(self, lights):

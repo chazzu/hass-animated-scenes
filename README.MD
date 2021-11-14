@@ -37,6 +37,7 @@ switch
 - platform: animated_scenes
   name: Red Lights # name of scene
   restore: False # don't restore lights to previous state after scene, defaults to True
+  restore_power: True # restore each light's on/off state after scene, defaults to False
   ignore_off: False # if a light in the list is off, turn it on. Defaults to True, meaning lights will be ignored if they are off.
   lights: # list of light entities to modify
   - light.hue_color_lamp_1
