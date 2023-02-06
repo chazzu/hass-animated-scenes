@@ -33,7 +33,7 @@ animated_scenes:
 Then add scenes you want to set up:
 
 ```yaml
-switch
+switch:
 - platform: animated_scenes
   name: Red Lights # name of scene
   restore: False # don't restore lights to previous state after scene, defaults to True
@@ -41,15 +41,16 @@ switch
   ignore_off: False # if a light in the list is off, turn it on. Defaults to True, meaning lights will be ignored if they are off.
   lights: # list of light entities to modify
   - light.hue_color_lamp_1
-  - colors:
-    color_type: rgb # use rgb colors
+  
+  colors:
+  - color_type: rgb # use rgb colors
     color: [255, 0, 0]
     brightness: 255 # maximum brightness
-    weight: 2 # optional; higher number makes a given color more likely to appear. Default is 10, so you can choose some numbers to be less frequent
+    weight: 2 # optional; higher number makes a given color more likely to appear. Default is 10, so you can choose lower numbers to be less frequent
     one_change_per_tick: False # optional; defaults to false; only change color OR brightness on each tick, don't do both
-  - colors:
-    color_type: ct # color temperature colors
+  - color_type: color_temp # color temperature colors
     color: 500 # number in mireds
+    
   transition: 2 # take 2 seconds to transition
   change_frequency: 15 # change lights every 15 seconds
   change_amount: all # change all lights every time
@@ -63,40 +64,42 @@ I did this initially to create an animation that mimics the Haunted House animat
 
 ```yaml
 switch:
-  - platform: animated_scenes
-    name: Spooky Scene
-    lights:
-      - be sure to list your light entities here
-    brightness: [100, 255]
-    colors:
-      - color_type: rgb_color
-        color: [ 247, 95, 28 ]
-        one_change_per_tick: True
-      - color_type: rgb_color
-        color: [ 255, 154, 0 ]
-        one_change_per_tick: True
-        weight: 5
-      - color_type: rgb_color
-        color: [ 136, 30, 228 ]
-        one_change_per_tick: True
-      - color_type: rgb_color
-        color: [ 133, 226, 31 ]
-        one_change_per_tick: True
-      - color_type: rgb_color
-        color: [ 148,0,211 ]
-        one_change_per_tick: True
-      - color_type: rgb_color
-        color: [ 200, 10, 10 ]
-        one_change_per_tick: True
-      - color_type: rgb_color
-        color: [ 135, 169, 107 ]
-        one_change_per_tick: True
-      - color_type: rgb_color
-        color: [ 103, 76, 71 ]
-        one_change_per_tick: True
-    transition: [1, 4]
-    change_frequency: 5
-    change_amount: 6
+- platform: animated_scenes
+  name: Spooky Scene
+  lights:
+  - be sure to list your light entities here
+  
+  brightness: [100, 255]
+  colors:
+  - color_type: rgb_color
+    color: [ 247, 95, 28 ]
+    one_change_per_tick: True
+  - color_type: rgb_color
+    color: [ 255, 154, 0 ]
+    one_change_per_tick: True
+    weight: 5
+  - color_type: rgb_color
+    color: [ 136, 30, 228 ]
+    one_change_per_tick: True
+  - color_type: rgb_color
+    color: [ 133, 226, 31 ]
+    one_change_per_tick: True
+  - color_type: rgb_color
+    color: [ 148,0,211 ]
+    one_change_per_tick: True
+  - color_type: rgb_color
+    color: [ 200, 10, 10 ]
+    one_change_per_tick: True
+  - color_type: rgb_color
+    color: [ 135, 169, 107 ]
+    one_change_per_tick: True
+  - color_type: rgb_color
+    color: [ 103, 76, 71 ]
+    one_change_per_tick: True
+    
+  transition: [1, 4]
+  change_frequency: 5
+  change_amount: 6
 ```
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
