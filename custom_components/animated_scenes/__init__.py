@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from config.custom_components.animated_scenes.service import start_animation, stop_animation
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -24,15 +25,16 @@ CONFIG_SCHEMA = vol.Schema({DOMAIN: vol.Schema({
 
 PLATFORMS = ["switch"]
 
+def async_setup(hass: HomeAssistant, config: dict):
+    hass.services.async_register(DOMAIN, "start_animation", start_animation)
+    hass.services.async_register(DOMAIN, "stop_animation", stop_animation)
 
-async def async_setup(hass: HomeAssistant, config: dict):
     try:
         switches = config.get(DOMAIN).get(CONF_EXTERNAL_SWITCHES)
         if switches:
             GLOBAL_SCENES.add_switches(switches)
     except AttributeError:
         pass
-    await GLOBAL_SCENES.set_hass(hass)
     return True
 
 
@@ -162,6 +164,5 @@ class AnimatedScenes:
                 break
 
         return attributes
-
-
+    
 GLOBAL_SCENES = AnimatedScenes()
