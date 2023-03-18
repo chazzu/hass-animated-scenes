@@ -188,8 +188,8 @@ class Animation:
 		state = self._hass.states.get(entity_id)
 		if state.state != "off" and entity_id not in self._active_lights:
 			self._active_lights.append(entity_id)
-		elif state.state == "off" and entity_id in self._active_lights:
-			self._active_lights.remove(entity_id)
+		elif state.state == "off" and self._ignore_off and entity_id not in self._active_lights:
+			self._active_lights.append(entity_id)
 
 	def add_lights(self, ids):
 		for light in ids:
