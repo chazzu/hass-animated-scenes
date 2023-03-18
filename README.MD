@@ -8,27 +8,64 @@ Features include:
 - Scene switches work as expected with Google Assistant.
 - If you turn a light off during an animation, it won't turn it back on. If you turn one on, it will add it to the animation automatically.
 
-### Disclaimer
+## Disclaimer
 I have only tested this with my own system as of now. I do plan on fixing any bugs identified by others, and would like to hear feedback though.
 
-### Installation
+## Installation
 - Clone this repository: `git clone https://github.com/chazzu/hass-animated-scenes.git`
 - If you have not already done so, create a 'custom_components' folder inside the 'config' folder in your Home Assistant installation.
 - Create an 'animated_scenes' folder inside your custom_components folder.
 - Copy the repository files into the animated_scenes folder.
-- Update your configuration.yaml as documented below and then restart your Home Assistant.
-- Be sure to look for the new switch entities and add them to your Lovelace dashboard.
+- In Home Assistant, go to Settings -> Devices & Services. Click Add Integration
+- Select the Animated Scenes integration.
 
-### Configuration 
+## Configuration 
 
-First, we configure the Animated Scenes component:
+There are three ways to configure an animation.
 
+- Configuring automations which call the 'start_animation' and 'stop_animation' services.
+- Using a blueprint to configure the automation quickly.
+- By configuring a switch in your configuration.yaml.
+
+### Automation Configuration
+
+First, I would recommend setting up a toggle helper.
+
+- Go to Settings -> Devices & Services. 
+- Click Helpers in the top bar.
+- Choose Create Helper at the bottom right.
+- Select Toggle as your Helper type.
+- Name and configure your Helper.
+
+Now you can set up an automation so that when the toggle is flipped, the animation starts and stops.
+
+- Go to Settings -> Automations & Scenes
+- Click Create Automation
+- Click Create new Automation
+- Add your toggle as a trigger, from Off to On
+- Add a Call Service action, with "animated_scene: Start Animation" as the service to call.
+- The configuration parameters are pre-filled with descriptions, so configure as you wish.
+
+For configuring colors, you can choose from the following options:
+
+Every color has the following configuration parameters:
 ```yaml
-animated_scenes:
-    external_switches: # optional; list of entities to turn off when activating a scene
-    - switch.circadian_lighting_circadian_light
-    - switch.flux_light 
+  weight: 10 # The higher the number, the more likely a color is to appear in the animation.
+  brightness: [0, 255] # Sets a minimum and maximum brightness for this color group
+  one_change_per_tick: true # If set to true, only the brightness OR color will change at one time
+  nearby_colors: 0 # If set to a number between 1 and 100, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color. This will only work for RGB, RGBW, and RGBWW
 ```
+
+*For RGB lights*
+```yaml
+- color_type: rgb_color
+  color:
+    - 255 # Red value
+    - 0 # Green value
+    - 0 # Blue value
+``` 
+
+### Switch Configuration
 
 Then add scenes you want to set up:
 
@@ -57,6 +94,7 @@ switch:
   change_sequence: True # instead of choosing a color randomly, choose in sequence
   animate_brightness: True # defaults to true to change brightness level
   animate_color: True # defaults to true to change color
+  animations: loop # Only do the animation X times, and then turn off, or do in a loop until turned off. 
 ```
 
 ### Sample Configurations

@@ -28,6 +28,7 @@ start_animation:
           min: 0
           max: 120
           step: 0.1
+          unit_of_measurement: seconds
     change_frequency:
       description: How often the animation should change something. Lower values means things will be changing faster, which requires higher system specs.
       example: 1
@@ -93,7 +94,7 @@ start_animation:
       selector:
         entity:
           domain: light
-      multiple: true
+          multiple: true
     colors:
       description: The list of colors. Due to limitations in Home Assistant, you will need to specify this in YAML form. See the documentation for details.
       selector:
@@ -102,7 +103,10 @@ start_animation:
       default:
         - color_type: rgb_color
           color: [ 255, 0, 0 ]
+          brightness: [0, 255]
           one_change_per_tick: True
+          nearby_colors: 0
+          weight: 10
 
 stop_animation:
   name: Stop Animation

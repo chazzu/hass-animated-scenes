@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from config.custom_components.animated_scenes.animations import Animations
 from config.custom_components.animated_scenes.service import start_animation, stop_animation
 
 import homeassistant.helpers.config_validation as cv
@@ -29,6 +30,7 @@ def async_setup(hass: HomeAssistant, config: dict):
     hass.services.async_register(DOMAIN, "start_animation", start_animation)
     hass.services.async_register(DOMAIN, "stop_animation", stop_animation)
 
+    Animations.instance = Animations(hass)
     try:
         switches = config.get(DOMAIN).get(CONF_EXTERNAL_SWITCHES)
         if switches:

@@ -20,11 +20,14 @@ CONF_COLOR_TYPE = 'color_type'
 CONF_IGNORE_OFF = 'ignore_off'
 CONF_LIGHTS = 'lights'
 CONF_NAME = 'name'
+CONF_NEARBY_COLORS = 'nearby_colors'
 CONF_ONE_CHANGE_PER_TICK = 'one_change_per_tick'
 CONF_PLATFORM = 'platform'
+CONF_PRIORITY = "priority"
 CONF_RESTORE = 'restore'
 CONF_RESTORE_POWER = 'restore_power'
 CONF_TRANSITION = 'transition'
+CONF_UNIQUE_ID = "unique_id"
 CONF_WEIGHT = 'weight'
 
 DEFAULT_MIN_BRIGHT = 70
