@@ -42,9 +42,6 @@ start_animation:
     change_amount:
       description: How many lights should be changed each time the frequency is hit. Specifying the word 'all' will change all lights.
       type: any
-      allowed:
-        - integer
-        - string
       default: all
       selector:
         text:

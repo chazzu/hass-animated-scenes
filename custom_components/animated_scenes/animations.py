@@ -71,7 +71,7 @@ START_SERVICE_SCHEMA = vol.Schema(
 			vol.Range(min=0, max=60),
 			vol.All([vol.Coerce(float), vol.Range(min=0, max=60)]),
 		),
-		vol.Optional(CONF_CHANGE_AMOUNT, default=1): vol.Any("all", int),
+		vol.Optional(CONF_CHANGE_AMOUNT, default=1): vol.Any('all', vol.All(vol.Coerce(int), vol.Range(min=0, max=65535)), vol.All(vol.Coerce(int), vol.All([vol.Range(min=0, max=65535)]))),
 		vol.Optional(CONF_CHANGE_SEQUENCE, default=False): bool,
 		vol.Optional(CONF_ANIMATE_BRIGHTNESS, default=True): bool,
 		vol.Optional(CONF_ANIMATE_COLOR, default=True): bool,
@@ -289,9 +289,9 @@ class Animation:
 	async def update_light(self, entity_id, initial = False):
 		if Animations.instance.get_animation_for_light(entity_id) != self:
 			return _LOGGER.info(
-				"Skipping light due to conflicting animation with higher priority",
-				self._unique_id,
+				"Skipping light %s due to conflicting animation with higher priority, %s",
 				entity_id,
+				self._unique_id,
 			)
 		await self._hass.services.async_call(
 			LIGHT_DOMAIN, SERVICE_TURN_ON, self.build_light_attributes(entity_id, initial)
@@ -418,6 +418,7 @@ class Animations:
 	def refresh_listener(self):
 		if self._external_light_listener != None:
 			self._external_light_listener()
+			self._external_light_listener = None
 		if len(self.states) > 0:
 			self._external_light_listener = async_track_state_change_event(
 				self.hass, self.states.keys(), self.external_light_change
@@ -469,7 +470,7 @@ class Animations:
 		try:
 			config = START_SERVICE_SCHEMA(dict(data))
 		except vol.Invalid as err:
-			_LOGGER.error("Error with received configuration", err)
+			_LOGGER.error("Error with received configuration, %s", err.error_message)
 			raise IntegrationError("Service data did not match schema")
 		return config
 
@@ -477,6 +478,6 @@ class Animations:
 		try:
 			config = STOP_SERVICE_SCHEMA(dict(data))
 		except vol.Invalid as err:
-			_LOGGER.error("Error with received configuration", err)
+			_LOGGER.error("Error with received configuration, %s", err.error_message)
 			raise IntegrationError("Service data did not match schema")
 		return config
