@@ -188,13 +188,13 @@ class Animation:
 		state = self._hass.states.get(entity_id)
 		if state.state != "off" and entity_id not in self._active_lights:
 			self._active_lights.append(entity_id)
-			Animations.instance.store_state(entity_id)
 		elif state.state == "off" and entity_id in self._active_lights:
 			self._active_lights.remove(entity_id)
 
 	def add_lights(self, ids):
 		for light in ids:
 			self.add_light(light)
+		Animations.instance.store_states(self._active_lights)
 
 	async def animate(self):
 		try:
@@ -325,7 +325,7 @@ class Animation:
 	async def stop(self):
 		self._task.cancel()
 		for light in self._active_lights:
-			Animations.instance.release_light(self, light)
+			await Animations.instance.release_light(self, light)
 		Animations.instance.release_animation(self)
 
 
@@ -416,11 +416,11 @@ class Animations:
 			await self.animations[id].stop()
 
 	def refresh_listener(self):
-		if self._external_light_listener:
+		if self._external_light_listener != None:
 			self._external_light_listener()
 		if len(self.states) > 0:
 			self._external_light_listener = async_track_state_change_event(
-				self.hass, self.states.keys, self.external_light_change
+				self.hass, self.states.keys(), self.external_light_change
 			)
 
 	def release_animation(self, animation: Animation):
