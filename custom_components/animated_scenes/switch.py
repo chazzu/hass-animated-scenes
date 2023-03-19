@@ -1,13 +1,11 @@
-from config.custom_components.animated_scenes.animations import (
+from .animations import (
     START_SERVICE_CONFIG,
     Animations,
 )
 
 import voluptuous as vol
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant
 from homeassistant.util import slugify
 from .const import *
 
