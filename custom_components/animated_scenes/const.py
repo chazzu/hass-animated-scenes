@@ -27,7 +27,6 @@ CONF_PRIORITY = "priority"
 CONF_RESTORE = 'restore'
 CONF_RESTORE_POWER = 'restore_power'
 CONF_TRANSITION = 'transition'
-CONF_UNIQUE_ID = "unique_id"
 CONF_WEIGHT = 'weight'
 
 DEFAULT_MIN_BRIGHT = 70

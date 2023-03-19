@@ -2,7 +2,7 @@ start_animation:
   name: Start Animation
   description: Start an animation
   fields:
-    unique_id:
+    name:
       description: Unique ID for the animation, to be used to turn it off later
       example: "Spooky"
       required: true
@@ -109,7 +109,7 @@ stop_animation:
   name: Stop Animation
   description: Stop the animated lights
   fields:
-    unique_id:
+    name:
       description: Unique ID for the animation, used when starting it.
       example: "Spooky"
       required: true
