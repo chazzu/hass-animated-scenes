@@ -1,10 +1,13 @@
 {
   "domain": "animated_scenes",
   "name": "Animated Scenes",
-  "documentation": "https://github.com/chazzu/hass-animated-scenes",
+  "config_flow": true,
+  "documentation": "https://github.com/chazzu/hass-animated-scenes#readme",
+  "issue_tracker": "https://github.com/chazzu/hass-animated-scenes/issues",
+  "iot_class": "local_push",
   "requirements": [],
   "dependencies": [],
-  "version": "0.0.2",
+  "version": "1.0.0",
   "codeowners": [
     "@chazzu"
   ]

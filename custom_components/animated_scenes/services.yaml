@@ -1,0 +1,117 @@
+start_animation:
+  name: Start Animation
+  description: Start an animation
+  fields:
+    name:
+      description: Unique ID for the animation, to be used to turn it off later
+      example: "Spooky"
+      required: true
+      selector:
+        text:
+    priority:
+      description: Sets a priority for this animation. If multiple animations use the same light, the one with the higher priority will "win" and take control of the light.
+      required: true
+      example: 100
+      default: 0
+      selector:
+        number:
+          min: -100
+          max: 100
+          step: 1
+    transition:
+      description: How long a light should take to transition from it's former state to it's new state.
+      example: 1
+      required: true
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 0.1
+          unit_of_measurement: seconds
+    change_frequency:
+      description: How often the animation should change something. Lower values means things will be changing faster, which requires higher system specs.
+      example: 1
+      required: true
+      default: 1
+      selector:
+        number:
+          min: 0.5
+          max: 3600
+          step: 1
+    change_amount:
+      description: How many lights should be changed each time the frequency is hit. Specifying the word 'all' will change all lights.
+      type: any
+      default: all
+      selector:
+        text:
+    ignore_off: 
+      description: If a light in the animation list is off, turn it on.
+      example: true
+      required: true
+      default: true
+      selector:
+        boolean:
+    restore:
+      description: When the animation ends, restore lights to their prior state.
+      example: true
+      required: true
+      default: true
+      selector:
+        boolean:
+    restore_power:
+      description: When the animation ends, turn any lights that were off back to off.
+      example: true
+      required: true
+      default: false
+      selector:
+        boolean:
+    change_sequence:
+      description: If set to true, then color changes will happen in order. If set to false, colors will be chosen randomly from the list.
+      default: false
+      required: true
+      selector:
+        boolean:
+    animate_brightness:
+      description: Whether or not to animate the brightness. If set to false, brightness will be set once upon startup.
+      default: true
+      required: true
+      selector:
+        boolean:
+    animate_color:
+      description: Whether or not to animate the colors. If set to false, colors will be set once upon startup.
+      default: true
+      required: true
+      selector:
+        boolean:
+    lights:
+      required: true
+      entity:
+        domain: light
+      selector:
+        entity:
+          domain: light
+          multiple: true
+    colors:
+      description: The list of colors. Due to limitations in Home Assistant, you will need to specify this in YAML form. See the documentation for details.
+      selector:
+        object:
+      required: true
+      default:
+        - color_type: rgb_color
+          color: [ 255, 0, 0 ]
+          brightness: [0, 255]
+          one_change_per_tick: True
+          nearby_colors: 0
+          weight: 10
+
+stop_animation:
+  name: Stop Animation
+  description: Stop the animated lights
+  fields:
+    name:
+      description: Unique ID for the animation, used when starting it.
+      example: "Spooky"
+      required: true
+      selector:
+        text:
