@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import asyncio
-from config.custom_components.animated_scenes.animations import Animations
-from config.custom_components.animated_scenes.service import (
+from .animations import Animations
+from .service import (
 	start_animation,
 	stop_animation,
 )

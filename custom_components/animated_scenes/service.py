@@ -1,5 +1,5 @@
 import logging
-from config.custom_components.animated_scenes.animations import Animations
+from .animations import Animations
 
 from homeassistant.core import ServiceCall
 

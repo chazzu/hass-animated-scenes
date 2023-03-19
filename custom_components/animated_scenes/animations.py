@@ -2,7 +2,7 @@ import asyncio
 import logging
 from random import choices, randrange, sample, uniform
 from typing import List
-from config.custom_components.animated_scenes.const import (
+from .const import (
     CONF_ANIMATE_BRIGHTNESS,
     CONF_ANIMATE_COLOR,
     CONF_CHANGE_AMOUNT,
