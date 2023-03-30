@@ -62,6 +62,9 @@ START_SERVICE_CONFIG = {
     vol.Optional(CONF_IGNORE_OFF, default=True): bool,
     vol.Optional(CONF_RESTORE, default=True): bool,
     vol.Optional(CONF_RESTORE_POWER, default=True): bool,
+    vol.Optional(ATTR_BRIGHTNESS, default = 255): vol.Any(
+        vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])
+    ),
     vol.Optional(CONF_TRANSITION, default=float(1.0)): vol.Any(
         VALID_TRANSITION, vol.All([VALID_TRANSITION])
     ),
@@ -73,7 +76,7 @@ START_SERVICE_CONFIG = {
     vol.Optional(CONF_CHANGE_AMOUNT, default=1): vol.Any(
         "all",
         vol.All(vol.Coerce(int), vol.Range(min=0, max=65535)),
-        vol.All(vol.Coerce(int), vol.All([vol.Range(min=0, max=65535)])),
+        vol.All(vol.All([vol.Coerce(int), vol.Range(min=0, max=65535)])),
     ),
     vol.Optional(CONF_CHANGE_SEQUENCE, default=False): bool,
     vol.Optional(CONF_ANIMATE_BRIGHTNESS, default=True): bool,
@@ -169,7 +172,8 @@ class Animation:
         self._active_lights: List[str] = []
         self._animate_brightness: bool = config.get(CONF_ANIMATE_BRIGHTNESS)
         self._animate_color: bool = config.get(CONF_ANIMATE_COLOR)
-        self._change_amount: int | "all" = config.get(CONF_CHANGE_AMOUNT)
+        self._global_brightness = config.get(ATTR_BRIGHTNESS)
+        self._change_amount = config.get(CONF_CHANGE_AMOUNT)
         self._change_frequency = config.get(CONF_CHANGE_FREQUENCY)
         self._colors = config.get(CONF_COLORS)
         self._current_color_index = 0
@@ -244,11 +248,13 @@ class Animation:
                 attributes[color[CONF_COLOR_TYPE]] = color[CONF_COLOR]
         if self._animate_brightness and ATTR_BRIGHTNESS in color:
             attributes["brightness"] = self.get_static_or_random(color[ATTR_BRIGHTNESS])
+        elif self._animate_brightness and self._global_brightness is not None:
+            attributes["brightness"] = self.get_static_or_random(self._global_brightness)
 
         if ATTR_BRIGHTNESS in color and color[CONF_ONE_CHANGE_PER_TICK]:
             self._light_status[light] = {
                 "change_one": color[CONF_ONE_CHANGE_PER_TICK],
-                "brightness": color[ATTR_BRIGHTNESS] or self._brightness,
+                "brightness": attributes[ATTR_BRIGHTNESS],
             }
 
         return attributes
