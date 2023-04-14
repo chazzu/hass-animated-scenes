@@ -254,7 +254,7 @@ class Animation:
         if ATTR_BRIGHTNESS in color and color[CONF_ONE_CHANGE_PER_TICK]:
             self._light_status[light] = {
                 "change_one": color[CONF_ONE_CHANGE_PER_TICK],
-                "brightness": attributes[ATTR_BRIGHTNESS],
+                "brightness": color[ATTR_BRIGHTNESS],
             }
 
         return attributes
