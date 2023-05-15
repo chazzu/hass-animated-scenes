@@ -73,7 +73,7 @@ class AnimatedScenesSensor(SensorEntity):
     
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        return {"running_animations": self._attributes}
+        return {"active_animations": self._attributes}
 
     @property
     def native_value(self) -> str | None:
@@ -94,7 +94,7 @@ class AnimatedScenesSensor(SensorEntity):
         self._attributes = []
 
     def update(self):
-        running_animations = [
+        active_animations = [
             {
                 "name": animation.name,
                 "lights": animation.lights,
@@ -107,10 +107,10 @@ class AnimatedScenesSensor(SensorEntity):
         # self._state = len(self._animations.animations)
         # self._number_test += 1
         # self._state = self._number_test
-        self._attributes = running_animations
+        self._attributes = active_animations
 
     # async def async_update(self):
-    #     running_animations = [
+    #     active_animations = [
     #         {
     #             "name": animation.name,
     #             "lights": animation.lights,
@@ -123,7 +123,7 @@ class AnimatedScenesSensor(SensorEntity):
     #     # self._number_test += 1
     #     # self._state = self._number_test
     #     # self._state = len(self._animations.animations)
-    #     self._attributes = running_animations
+    #     self._attributes = active_animations
 
     # async def async_added_to_hass(self) -> None:
     #     """Handle entity which will be added."""
@@ -131,7 +131,7 @@ class AnimatedScenesSensor(SensorEntity):
     #     @callback
     #     def update():
     #         """Update the state."""
-    #         running_animations = [
+    #         active_animations = [
     #             {
     #                 "name": animation.name,
     #                 "lights": animation.lights,
@@ -142,7 +142,7 @@ class AnimatedScenesSensor(SensorEntity):
 
     #         self._state = len(Animations.instance.animations)
     #         # self._state = len(self._animations.animations)
-    #         self._attributes = running_animations
+    #         self._attributes = active_animations
     #         self.async_schedule_update_ha_state(True)
 
     #     self.async_on_remove(
