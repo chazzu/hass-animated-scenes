@@ -87,7 +87,7 @@ class AnimatedScenesSensor(SensorEntity):
         self._state = 55
         self._attributes = []
         self._animations: Animations = animations
-        # self._number_test = 1
+        self._number_test = 0
 
     async def async_added_to_hass(self):
         # self._state = 74
@@ -103,10 +103,11 @@ class AnimatedScenesSensor(SensorEntity):
             # for animation in self._animations.animations.values()
         ]
 
-        self._state = len(Animations.instance.animations)
+        self._state = Animations.instance.active_animations_len()
+        # self._state = len(Animations.instance.animations)
         # self._state = len(self._animations.animations)
-        # self._number_test += 1
-        # self._state = self._number_test
+        self._number_test += 1
+        self._state = self._state + " Update: " + self._number_test
         self._attributes = active_animations
 
     # async def async_update(self):
