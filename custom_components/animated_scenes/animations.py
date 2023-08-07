@@ -29,7 +29,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant as State
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant.exceptions import IntegrationError, RequiredParameterMissing
+from homeassistant.exceptions import IntegrationError
 import colorsys
 
 from homeassistant.components.light import (
