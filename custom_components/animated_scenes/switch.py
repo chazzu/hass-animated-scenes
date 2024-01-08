@@ -48,7 +48,7 @@ class AnimatedSceneSwitch(SwitchEntity):
         self.entity_id = "switch." + slugify("{} {}".format("animated_scene", name))
         self.hass = hass
         self._name = name
-        self._state = None
+        self._state = False
         self._config = {key: value for key, value in config.items() if key != 'platform'}
 
     async def async_turn_on(self, **kwargs: vol.Any) -> None:

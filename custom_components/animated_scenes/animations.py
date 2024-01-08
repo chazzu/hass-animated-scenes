@@ -19,6 +19,9 @@ from .const import (
     CONF_RESTORE_POWER,
     CONF_TRANSITION,
     CONF_WEIGHT,
+    EVENT_NAME_CHANGE,
+    EVENT_STATE_STARTED,
+    EVENT_STATE_STOPPED,
 )
 from homeassistant.const import (
     CONF_LIGHTS,
@@ -49,7 +52,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 _LOGGER = logging.getLogger(__name__)
 
 COLOR_GROUP_SCHEMA = {
-    vol.Optional(ATTR_BRIGHTNESS, default = 255): vol.Any(
+    vol.Optional(ATTR_BRIGHTNESS, default=255): vol.Any(
         vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])
     ),
     vol.Optional(CONF_WEIGHT, default=10): vol.Range(min=0, max=255),
@@ -62,7 +65,7 @@ START_SERVICE_CONFIG = {
     vol.Optional(CONF_IGNORE_OFF, default=True): bool,
     vol.Optional(CONF_RESTORE, default=True): bool,
     vol.Optional(CONF_RESTORE_POWER, default=True): bool,
-    vol.Optional(ATTR_BRIGHTNESS, default = 255): vol.Any(
+    vol.Optional(ATTR_BRIGHTNESS, default=255): vol.Any(
         vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])
     ),
     vol.Optional(CONF_TRANSITION, default=float(1.0)): vol.Any(
@@ -168,7 +171,7 @@ STOP_SERVICE_SCHEMA = vol.Schema(
 
 class Animation:
     def __init__(self, hass, config):
-        self._name: str = config.get(CONF_NAME)
+        self._name: str = config[CONF_NAME]
         self._active_lights: List[str] = []
         self._animate_brightness: bool = config.get(CONF_ANIMATE_BRIGHTNESS)
         self._animate_color: bool = config.get(CONF_ANIMATE_COLOR)
@@ -213,12 +216,28 @@ class Animation:
 
     async def animate(self):
         try:
-            while True:
+            while (
+                self._name in Animations.instance.animations and not self._task.done()
+            ):
                 await self.update_lights()
                 frequency = self.get_change_frequency()
                 await asyncio.sleep(int(frequency))
-        except asyncio.CancelledError as err:
-            pass
+        finally:
+            _LOGGER.info("Animation '%s' has been stopped", self._name)
+            if self._name not in Animations.instance.animations:
+                _LOGGER.info(
+                    "Animation '%s' was removed from list of active animations",
+                    self._name,
+                )
+            elif self._task.done():
+                _LOGGER.info("Animation '%s' was marked as done", self._name)
+            for light in self._active_lights:
+                await Animations.instance.release_light(self, light)
+            Animations.instance.release_animation(self)
+            self._hass.bus.async_fire(
+                EVENT_NAME_CHANGE,
+                {"animation": self._name, "state": EVENT_STATE_STOPPED},
+            )
 
     def build_light_attributes(self, light, initial=False):
         if light in self._light_status and self._light_status[light]["change_one"]:
@@ -249,7 +268,9 @@ class Animation:
         if self._animate_brightness and ATTR_BRIGHTNESS in color:
             attributes["brightness"] = self.get_static_or_random(color[ATTR_BRIGHTNESS])
         elif self._animate_brightness and self._global_brightness is not None:
-            attributes["brightness"] = self.get_static_or_random(self._global_brightness)
+            attributes["brightness"] = self.get_static_or_random(
+                self._global_brightness
+            )
 
         if ATTR_BRIGHTNESS in color and color[CONF_ONE_CHANGE_PER_TICK]:
             self._light_status[light] = {
@@ -351,12 +372,17 @@ class Animation:
             return
         if not self._task:
             self._task = asyncio.get_event_loop().create_task(self.animate())
+            self._hass.bus.async_fire(
+                EVENT_NAME_CHANGE,
+                {"animation": self._name, "state": EVENT_STATE_STARTED},
+            )
 
     async def stop(self):
         self._task.cancel()
-        for light in self._active_lights:
-            await Animations.instance.release_light(self, light)
-        Animations.instance.release_animation(self)
+        try:
+            await self._task
+        except asyncio.CancelledError:
+            _LOGGER.info("Animation '%s' has been cancelled", self._name)
 
 
 class Animations:
@@ -366,6 +392,7 @@ class Animations:
         self._external_light_listener = None
         self._light_animations: dict[str, List[Animation]] = {}
         self._light_owner: dict[str, Animation] = {}
+        self._conflicted_lights: set[str] = {}
         self.hass = hass
 
     def build_attributes_from_state(self, state):
@@ -391,14 +418,14 @@ class Animations:
 
         return attributes
 
-    def external_light_change(self, event):
+    async def external_light_change(self, event):
         entity_id = event.data.get("entity_id")
         state = event.data.get("new_state").state
         if state == "on" and event.data.get("old_state").state == "off":
             if entity_id not in self.states:
                 self.states[entity_id] = self._hass.states.get(entity_id)
             animation = self.refresh_animation_for_light(entity_id)
-            animation.update_light(entity_id)
+            await animation.update_light(entity_id)
 
     def get_animation_by_priority(self, priority) -> Animation | None:
         for animation in self.animations:
@@ -423,9 +450,11 @@ class Animations:
 
     async def start(self, data):
         config = self.validate_start(data)
-        id = data.get(CONF_NAME)
+        id = data[CONF_NAME]
         if id in self.animations:
+            _LOGGER.info("Animation '%s' was already running, so stopping it", id)
             await self.animations[id].stop()
+        _LOGGER.info("Starting animation '%s'", id)
         animation = Animation(self.hass, config)
         for light in animation._lights:
             if (
@@ -442,6 +471,7 @@ class Animations:
     async def stop(self, data):
         config = self.validate_stop(data)
         id = config.get(CONF_NAME)
+        _LOGGER.info("Stopping animation '%s'", id)
         if id in self.animations:
             await self.animations[id].stop()
 

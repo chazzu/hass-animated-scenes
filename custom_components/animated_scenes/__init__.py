@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 
-PLATFORMS = ["switch"]
+PLATFORMS = ["switch", "sensor"]
 
 
 async def async_setup(hass: HomeAssistant, config: dict):

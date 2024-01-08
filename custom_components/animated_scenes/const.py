@@ -31,3 +31,7 @@ CONF_WEIGHT = 'weight'
 
 DEFAULT_MIN_BRIGHT = 70
 DEFAULT_MAX_BRIGHT = 100
+
+EVENT_NAME_CHANGE = 'animated_scenes_change'
+EVENT_STATE_STARTED = 'started'
+EVENT_STATE_STOPPED = 'stopped'
