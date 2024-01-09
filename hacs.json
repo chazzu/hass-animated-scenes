@@ -1,5 +1,5 @@
 {
     "name": "Animated Scenes",
-    "domains": ["switch"],
+    "domains": ["switch", "sensor"],
     "country": "US"
   }
