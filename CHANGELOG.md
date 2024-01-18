@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 1.1.1
+
+### Fixed
+
+- When restoring state, explicitly restore color mode. Theoretically, this should resolve [#27](https://github.com/chazzu/hass-animated-scenes/issues/27)
+
 ## 1.1.0
 
 ### Added
