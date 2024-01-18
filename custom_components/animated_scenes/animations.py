@@ -37,6 +37,7 @@ import colorsys
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
@@ -46,6 +47,7 @@ from homeassistant.components.light import (
     ATTR_XY_COLOR,
     DOMAIN as LIGHT_DOMAIN,
     VALID_TRANSITION,
+    ColorMode,
 )
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -401,20 +403,37 @@ class Animations:
             "brightness": state.attributes.get("brightness"),
             "transition": 1,
         }
-        exclusive_properties = [
-            ATTR_RGB_COLOR,
-            ATTR_RGBW_COLOR,
-            ATTR_RGBWW_COLOR,
-            ATTR_XY_COLOR,
-            ATTR_HS_COLOR,
-            ATTR_COLOR_TEMP,
-            ATTR_COLOR_TEMP_KELVIN,
-        ]
-        for attr in exclusive_properties:
-            value = state.attributes.get(attr)
-            if value:
-                attributes[attr] = value
-                break
+        if ATTR_COLOR_MODE in state.attributes:
+            attributes[ATTR_COLOR_MODE] = state.attributes.get(ATTR_COLOR_MODE)
+            if state.attributes[ATTR_COLOR_MODE] == ColorMode.XY:
+                attributes[ATTR_XY_COLOR] = state.attributes.get(ATTR_XY_COLOR)
+            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.COLOR_TEMP:
+                attributes[ATTR_COLOR_TEMP] = state.attributes.get(ATTR_COLOR_TEMP)
+            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.HS:
+                attributes[ATTR_HS_COLOR] = state.attributes.get(ATTR_HS_COLOR)
+            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.RGB:
+                attributes[ATTR_RGB_COLOR] = state.attributes.get(ATTR_RGB_COLOR)
+            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.RGBW:
+                attributes[ATTR_RGBW_COLOR] = state.attributes.get(ATTR_RGBW_COLOR)
+            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.RGBWW:
+                attributes[ATTR_RGBWW_COLOR] = state.attributes.get(ATTR_RGBWW_COLOR)
+            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.WHITE:
+                attributes[ATTR_COLOR_MODE] = ColorMode.WHITE
+        else:
+            exclusive_properties = [
+                ATTR_RGB_COLOR,
+                ATTR_RGBW_COLOR,
+                ATTR_RGBWW_COLOR,
+                ATTR_XY_COLOR,
+                ATTR_HS_COLOR,
+                ATTR_COLOR_TEMP,
+                ATTR_COLOR_TEMP_KELVIN,
+            ]
+            for attr in exclusive_properties:
+                value = state.attributes.get(attr)
+                if value:
+                    attributes[attr] = value
+                    break
 
         return attributes
 
