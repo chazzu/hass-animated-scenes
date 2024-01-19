@@ -404,7 +404,6 @@ class Animations:
             "transition": 1,
         }
         if ATTR_COLOR_MODE in state.attributes:
-            attributes[ATTR_COLOR_MODE] = state.attributes.get(ATTR_COLOR_MODE)
             if state.attributes[ATTR_COLOR_MODE] == ColorMode.XY:
                 attributes[ATTR_XY_COLOR] = state.attributes.get(ATTR_XY_COLOR)
             elif state.attributes[ATTR_COLOR_MODE] == ColorMode.COLOR_TEMP:
