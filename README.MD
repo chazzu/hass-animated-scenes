@@ -189,4 +189,76 @@ switch:
   change_amount: 6
 ```
 
+## Usage Tips
+
+### Checking running animations
+
+The Activity sensor is set to the number of currently running animations. The attributes are:
+
+- active: A list of currently running animations.
+- active_lights: A list of lights currently in use by animations.
+
+Note that the sensor does not update immediately, so there may be a few seconds from when an animation is stopped til it is reflected on the sensor.
+
+Here is a simple example script which would stop all currently running animations.
+
+```yaml
+alias: Stop All Animations
+sequence:
+  - variables:
+      animations: "{{ state_attr('sensor.activity', 'active')|list }}"
+  - alias: Repeat for each animation
+    repeat:
+      for_each: "{{ animations }}"
+      sequence:
+        - alias: Stop animation
+          service: animated_scenes.stop_animation
+          data:
+            name: "{{ repeat.item }}"
+mode: single
+```
+
+### Freeing up lights
+
+A common use case that I ran into is wanting to animate the whole house for fun. However, we should be able to easily remove lights from an animation in order to control them manually. You can do this using the `remove_lights` service.
+
+If the animation specifies 'restore_lights' then normally it would set the lights back the state they were in. However, we may not want that to happen. For example, if an animation is running in a room and you hit the light switch to on, you may want the lights to just go to their normal color and brightness and not first get restored back to 'off' first. 
+
+```yaml
+alias: Remove Living Room Lights
+description: When Living Room light switch is clicked, just turn it on even if it's animated.
+trigger:
+  - platform: state
+    entity_id:
+      - sensor.living_room_light_switch_action
+    to: up_single
+sequence:
+  - service: animated_scenes.remove_lights
+    data:
+      lights:
+        - light.living_room_1
+        - light.living_room_2
+      skip_restore: true
+  - service: light.turn_on
+    target:
+      entity_id:
+        - light.living_room_1
+        - light.living_room_2
+    data:
+      kelvin: 2800
+      brightness_pct: 100
+```
+
+### Adding lights to an animation
+
+Once an animation is running, you can also add additional lights to it using the `add_lights_to_animation` service.
+
+```yaml
+service: animated_scenes.add_lights_to_animation
+data:
+  lights:
+    - light.living_room_1
+  name: Animation ID
+```
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)

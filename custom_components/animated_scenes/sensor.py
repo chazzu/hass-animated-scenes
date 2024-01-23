@@ -18,6 +18,8 @@ class AnimatedScenesSensor(SensorEntity):
 
     _active: set = {}
 
+    scan_interval: 3
+
     @property
     def native_value(self):
         return len(Animations.instance.animations)

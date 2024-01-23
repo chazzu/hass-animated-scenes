@@ -32,7 +32,7 @@ start_animation:
     change_frequency:
       description: How often the animation should change something. Lower values means things will be changing faster, which requires higher system specs.
       example: 1
-      required: true
+      required: false
       default: 1
       selector:
         number:
@@ -45,7 +45,7 @@ start_animation:
       default: all
       selector:
         text:
-    ignore_off: 
+    ignore_off:
       description: If a light in the animation list is off, turn it on.
       example: true
       required: true
@@ -111,6 +111,42 @@ stop_animation:
   fields:
     name:
       description: Unique ID for the animation, used when starting it.
+      example: "Spooky"
+      required: true
+      selector:
+        text:
+
+remove_lights:
+  name: Remove Lights
+  description: Remove specified lights from all animations. Stop the animation if there are no lights left in it.
+  fields:
+    lights:
+      description: The lights to stop animating
+      required: True
+      selector:
+       entity:
+        domain: light
+        multiple: True
+    skip_restore:
+      description: If set to true, do not restore the lights to their prior state even if the animation is configured to do so.
+      required: False
+      default: False
+      selector:
+        boolean: {}
+
+add_lights_to_animation:
+  name: Add Lights to Animation
+  description: Add specified lights to an existing animation.
+  fields:
+    lights:
+      description: The lights to add to the animation
+      required: True
+      selector:
+       entity:
+        domain: light
+        multiple: True
+    name:
+      description: Unique ID for the animation, must already be running
       example: "Spooky"
       required: true
       selector:
