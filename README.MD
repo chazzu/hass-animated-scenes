@@ -11,7 +11,13 @@ Features include:
 ## Disclaimer
 I have only tested this with my own system as of now. I do plan on fixing any bugs identified by others, and would like to hear feedback though.
 
-## Installation
+## HACS Installation
+- Ad the follwing custom repository to HACS: `https://github.com/chazzu/hass-animated-scenes.git`
+- Reload Home Assistant
+- In Home Assistant, go to Settings -> Devices & Services. Click Add Integration
+- Select the Animated Scenes integration.
+
+## Manual Installation
 - Clone this repository: `git clone https://github.com/chazzu/hass-animated-scenes.git`
 - If you have not already done so, create a 'custom_components' folder inside the 'config' folder in your Home Assistant installation.
 - Create an 'animated_scenes' folder inside your custom_components folder.
