@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 1.2.1
+
+### Fixed
+
+- If a float is specified for transition time, use random.uniform instead of randrange()
+- I haven't been updating the manifest file with versions. Oops.
+
 ## 1.2.0
 
 ### Added

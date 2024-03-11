@@ -337,7 +337,10 @@ class Animation:
 
     def get_static_or_random(self, value, step=1):
         if isinstance(value, list):
-            return randrange(value[0], value[1], step)
+            if isinstance(value[0], float) or isinstance(value[1], float):
+                return round(uniform(value[0], value[1]), 1)
+            else:
+                return randrange(value[0], value[1], step)
         return value
 
     def pick_color(self):
