@@ -7,7 +7,6 @@ from typing import List
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.components.light import (
-    ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP,
     ATTR_COLOR_TEMP_KELVIN,
@@ -16,13 +15,11 @@ from homeassistant.components.light import (
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
     ATTR_XY_COLOR,
-    VALID_TRANSITION,
-    ColorMode,
 )
-from homeassistant.components.light import (
-    DOMAIN as LIGHT_DOMAIN,
-)
+from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.components.light import VALID_TRANSITION, ColorMode
 from homeassistant.const import (
+    CONF_BRIGHTNESS,
     CONF_LIGHTS,
     CONF_NAME,
     SERVICE_TURN_OFF,
@@ -39,17 +36,17 @@ from .const import (
     CONF_CHANGE_FREQUENCY,
     CONF_CHANGE_SEQUENCE,
     CONF_COLOR,
+    CONF_COLOR_NEARBY_COLORS,
+    CONF_COLOR_ONE_CHANGE_PER_TICK,
     CONF_COLOR_TYPE,
+    CONF_COLOR_WEIGHT,
     CONF_COLORS,
     CONF_IGNORE_OFF,
-    CONF_NEARBY_COLORS,
-    CONF_ONE_CHANGE_PER_TICK,
     CONF_PRIORITY,
     CONF_RESTORE,
     CONF_RESTORE_POWER,
     CONF_SKIP_RESTORE,
     CONF_TRANSITION,
-    CONF_WEIGHT,
     EVENT_NAME_CHANGE,
     EVENT_STATE_STARTED,
     EVENT_STATE_STOPPED,
@@ -58,12 +55,12 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 COLOR_GROUP_SCHEMA = {
-    vol.Optional(ATTR_BRIGHTNESS, default=255): vol.Any(
+    vol.Optional(CONF_BRIGHTNESS, default=255): vol.Any(
         vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])
     ),
-    vol.Optional(CONF_WEIGHT, default=10): vol.Range(min=0, max=255),
-    vol.Optional(CONF_ONE_CHANGE_PER_TICK, default=False): bool,
-    vol.Optional(CONF_NEARBY_COLORS, default=0): vol.Range(min=0, max=10),
+    vol.Optional(CONF_COLOR_WEIGHT, default=10): vol.Range(min=0, max=255),
+    vol.Optional(CONF_COLOR_ONE_CHANGE_PER_TICK, default=False): bool,
+    vol.Optional(CONF_COLOR_NEARBY_COLORS, default=0): vol.Range(min=0, max=10),
 }
 
 START_SERVICE_CONFIG = {
@@ -71,7 +68,7 @@ START_SERVICE_CONFIG = {
     vol.Optional(CONF_IGNORE_OFF, default=True): bool,
     vol.Optional(CONF_RESTORE, default=True): bool,
     vol.Optional(CONF_RESTORE_POWER, default=True): bool,
-    vol.Optional(ATTR_BRIGHTNESS, default=255): vol.Any(
+    vol.Optional(CONF_BRIGHTNESS, default=255): vol.Any(
         vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])
     ),
     vol.Optional(CONF_TRANSITION, default=float(1.0)): vol.Any(
@@ -96,51 +93,71 @@ START_SERVICE_CONFIG = {
         cv.ensure_list,
         [
             vol.Any(
-                vol.Schema({
-                    vol.Required(CONF_COLOR_TYPE): ATTR_RGB_COLOR,
-                    vol.Required(CONF_COLOR): vol.All(
-                        vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 3)
-                    ),
-                }).extend(COLOR_GROUP_SCHEMA),
-                vol.Schema({
-                    vol.Required(CONF_COLOR_TYPE): ATTR_RGBW_COLOR,
-                    vol.Required(CONF_COLOR): vol.All(
-                        vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 4)
-                    ),
-                }).extend(COLOR_GROUP_SCHEMA),
-                vol.Schema({
-                    vol.Required(CONF_COLOR_TYPE): ATTR_RGBWW_COLOR,
-                    vol.Required(CONF_COLOR): vol.All(
-                        vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 5)
-                    ),
-                }).extend(COLOR_GROUP_SCHEMA),
-                vol.Schema({
-                    vol.Required(CONF_COLOR_TYPE): ATTR_XY_COLOR,
-                    vol.Required(CONF_COLOR): vol.All(
-                        vol.Coerce(tuple),
-                        vol.ExactSequence((cv.small_float, cv.small_float)),
-                    ),
-                }).extend(COLOR_GROUP_SCHEMA),
-                vol.Schema({
-                    vol.Required(CONF_COLOR_TYPE): ATTR_HS_COLOR,
-                    vol.Required(CONF_COLOR): vol.All(
-                        vol.Coerce(tuple),
-                        vol.ExactSequence((
-                            vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
-                            vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
-                        )),
-                    ),
-                }).extend(COLOR_GROUP_SCHEMA),
-                vol.Schema({
-                    vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP,
-                    vol.Required(CONF_COLOR): vol.All(
-                        vol.Coerce(int), vol.Range(min=1)
-                    ),
-                }).extend(COLOR_GROUP_SCHEMA),
-                vol.Schema({
-                    vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP_KELVIN,
-                    vol.Required(CONF_COLOR): cv.positive_int,
-                }).extend(COLOR_GROUP_SCHEMA),
+                vol.Schema(
+                    {
+                        vol.Required(CONF_COLOR_TYPE): ATTR_RGB_COLOR,
+                        vol.Required(CONF_COLOR): vol.All(
+                            vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 3)
+                        ),
+                    }
+                ).extend(COLOR_GROUP_SCHEMA),
+                vol.Schema(
+                    {
+                        vol.Required(CONF_COLOR_TYPE): ATTR_RGBW_COLOR,
+                        vol.Required(CONF_COLOR): vol.All(
+                            vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 4)
+                        ),
+                    }
+                ).extend(COLOR_GROUP_SCHEMA),
+                vol.Schema(
+                    {
+                        vol.Required(CONF_COLOR_TYPE): ATTR_RGBWW_COLOR,
+                        vol.Required(CONF_COLOR): vol.All(
+                            vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 5)
+                        ),
+                    }
+                ).extend(COLOR_GROUP_SCHEMA),
+                vol.Schema(
+                    {
+                        vol.Required(CONF_COLOR_TYPE): ATTR_XY_COLOR,
+                        vol.Required(CONF_COLOR): vol.All(
+                            vol.Coerce(tuple),
+                            vol.ExactSequence((cv.small_float, cv.small_float)),
+                        ),
+                    }
+                ).extend(COLOR_GROUP_SCHEMA),
+                vol.Schema(
+                    {
+                        vol.Required(CONF_COLOR_TYPE): ATTR_HS_COLOR,
+                        vol.Required(CONF_COLOR): vol.All(
+                            vol.Coerce(tuple),
+                            vol.ExactSequence(
+                                (
+                                    vol.All(
+                                        vol.Coerce(float), vol.Range(min=0, max=360)
+                                    ),
+                                    vol.All(
+                                        vol.Coerce(float), vol.Range(min=0, max=100)
+                                    ),
+                                )
+                            ),
+                        ),
+                    }
+                ).extend(COLOR_GROUP_SCHEMA),
+                vol.Schema(
+                    {
+                        vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP,
+                        vol.Required(CONF_COLOR): vol.All(
+                            vol.Coerce(int), vol.Range(min=1)
+                        ),
+                    }
+                ).extend(COLOR_GROUP_SCHEMA),
+                vol.Schema(
+                    {
+                        vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP_KELVIN,
+                        vol.Required(CONF_COLOR): cv.positive_int,
+                    }
+                ).extend(COLOR_GROUP_SCHEMA),
             )
         ],
     ),
@@ -148,20 +165,26 @@ START_SERVICE_CONFIG = {
 
 START_SERVICE_SCHEMA = vol.Schema(START_SERVICE_CONFIG)
 
-STOP_SERVICE_SCHEMA = vol.Schema({
-    vol.Required(CONF_NAME): cv.string,
-})
+STOP_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME): cv.string,
+    }
+)
 
-ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA = vol.Schema({
-    vol.Required(CONF_LIGHTS): cv.entity_ids,
-    vol.Required(CONF_NAME): cv.string,
-})
+ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_LIGHTS): cv.entity_ids,
+        vol.Required(CONF_NAME): cv.string,
+    }
+)
 
 
-REMOVE_LIGHTS_SERVICE_SCHEMA = vol.Schema({
-    vol.Required(CONF_LIGHTS): cv.entity_ids,
-    vol.Optional(CONF_SKIP_RESTORE, default=False): bool,
-})
+REMOVE_LIGHTS_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_LIGHTS): cv.entity_ids,
+        vol.Optional(CONF_SKIP_RESTORE, default=False): bool,
+    }
+)
 
 
 async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict):
@@ -177,7 +200,7 @@ class Animation:
         self._active_lights: List[str] = []
         self._animate_brightness: bool = config.get(CONF_ANIMATE_BRIGHTNESS)
         self._animate_color: bool = config.get(CONF_ANIMATE_COLOR)
-        self._global_brightness = config.get(ATTR_BRIGHTNESS)
+        self._global_brightness = config.get(CONF_BRIGHTNESS)
         self._change_amount = config.get(CONF_CHANGE_AMOUNT)
         self._change_frequency = config.get(CONF_CHANGE_FREQUENCY)
         self._colors = config.get(CONF_COLORS)
@@ -201,6 +224,7 @@ class Animation:
         self.add_lights(self._lights)
 
     def add_light(self, entity_id):
+        _LOGGER.debug(f"[Animation add_light] entity_id: {entity_id}")
         state = self._hass.states.get(entity_id)
         if state.state != "off" and entity_id not in self._active_lights:
             self._active_lights.append(entity_id)
@@ -210,13 +234,18 @@ class Animation:
             and entity_id not in self._active_lights
         ):
             self._active_lights.append(entity_id)
+        _LOGGER.debug(
+            f"[Animation add_light] self._active_lights: {self._active_lights}"
+        )
 
     def add_lights(self, ids):
+        _LOGGER.debug(f"[Animation add_lights] ids: {ids}")
         for light in ids:
             self.add_light(light)
         Animations.instance.store_states(self._active_lights)
 
     async def animate(self):
+        _LOGGER.debug(f"[Animation animate]")
         try:
             while (
                 self._name in Animations.instance.animations and not self._task.done()
@@ -236,6 +265,7 @@ class Animation:
             await self.release()
 
     def build_light_attributes(self, light, initial=False):
+        _LOGGER.debug(f"[Animation build_light_attributes] light: {light}")
         if light in self._light_status and self._light_status[light]["change_one"]:
             color_or_brightness = randrange(1, 2, 1)
             if color_or_brightness == 2:
@@ -257,32 +287,36 @@ class Animation:
             "transition": self.get_transition(),
         }
         if self._animate_color or initial:
-            if CONF_NEARBY_COLORS in color and color[CONF_NEARBY_COLORS] > 0:
+            if (
+                CONF_COLOR_NEARBY_COLORS in color
+                and color[CONF_COLOR_NEARBY_COLORS] > 0
+            ):
                 attributes[color[CONF_COLOR_TYPE]] = self.find_nearby_color(color)
             else:
                 attributes[color[CONF_COLOR_TYPE]] = color[CONF_COLOR]
-        if self._animate_brightness and ATTR_BRIGHTNESS in color:
-            attributes["brightness"] = self.get_static_or_random(color[ATTR_BRIGHTNESS])
+        if self._animate_brightness and CONF_BRIGHTNESS in color:
+            attributes["brightness"] = self.get_static_or_random(color[CONF_BRIGHTNESS])
         elif self._animate_brightness and self._global_brightness is not None:
             attributes["brightness"] = self.get_static_or_random(
                 self._global_brightness
             )
 
-        if ATTR_BRIGHTNESS in color and color[CONF_ONE_CHANGE_PER_TICK]:
+        if CONF_BRIGHTNESS in color and color[CONF_COLOR_ONE_CHANGE_PER_TICK]:
             self._light_status[light] = {
-                "change_one": color[CONF_ONE_CHANGE_PER_TICK],
-                "brightness": color[ATTR_BRIGHTNESS],
+                "change_one": color[CONF_COLOR_ONE_CHANGE_PER_TICK],
+                "brightness": color[CONF_BRIGHTNESS],
             }
 
         return attributes
 
     def find_nearby_color(self, color):
+        _LOGGER.debug(f"[Animation find_nearby_color] color: {color}")
         selected_color = [
             color[CONF_COLOR][0],
             color[CONF_COLOR][1],
             color[CONF_COLOR][2],
         ]
-        modifier = color[CONF_NEARBY_COLORS]
+        modifier = color[CONF_COLOR_NEARBY_COLORS]
         if color[CONF_COLOR_TYPE] not in [
             ATTR_RGB_COLOR,
             ATTR_RGBW_COLOR,
@@ -321,10 +355,12 @@ class Animation:
         return value
 
     def pick_color(self):
+        _LOGGER.debug(f"[Animation pick_color]")
         color = choices(self._colors, self._weights, k=1)
         return color.pop()
 
     def pick_lights(self, change_amount):
+        _LOGGER.debug(f"[Animation pick_lights] change_amount: {change_amount}")
         if self._ignore_off:
             to_change = []
             randomized_list = sample(self._active_lights, k=change_amount)
@@ -338,6 +374,7 @@ class Animation:
         return sample(self._active_lights, k=change_amount)
 
     async def release(self):
+        _LOGGER.debug(f"[Animation release]")
         for light in self._active_lights:
             await Animations.instance.release_light(self, light)
         Animations.instance.release_animation(self)
@@ -347,10 +384,13 @@ class Animation:
         )
 
     def remove_light(self, light: str):
+        _LOGGER.debug(f"[Animation remove_light] light: {light}")
         if light in self._active_lights:
             self._active_lights.remove(light)
+        _LOGGER.debug(f"[remove_light] self._active_lights: {self._active_lights}")
 
     async def update_light(self, entity_id, initial=False):
+        _LOGGER.debug(f"[Animation update_light] entity_id: {entity_id}")
         if Animations.instance.get_animation_for_light(entity_id) != self:
             return _LOGGER.info(
                 "Skipping light %s due to conflicting animation with higher priority, %s",
@@ -365,6 +405,7 @@ class Animation:
         )
 
     async def update_lights(self):
+        _LOGGER.debug(f"[Animation update_lights]")
         if self._change_amount == "all":
             change_amount = len(self._active_lights)
         else:
@@ -384,6 +425,7 @@ class Animation:
         await asyncio.gather(*updates)
 
     async def start(self):
+        _LOGGER.debug(f"[Animation start]")
         updates = []
         for light in self._active_lights:
             updates.append(self.update_light(light, True))
@@ -399,6 +441,7 @@ class Animation:
             )
 
     async def stop(self):
+        _LOGGER.debug(f"[Animation strop]")
         self._task.cancel()
         try:
             await self._task
@@ -417,6 +460,7 @@ class Animations:
         self.hass = hass
 
     def build_attributes_from_state(self, state):
+        _LOGGER.debug(f"[Animations build_attributes_from_state] state: {state}")
         attributes = {
             "entity_id": state.entity_id,
             "brightness": state.attributes.get("brightness"),
@@ -456,6 +500,7 @@ class Animations:
         return attributes
 
     async def external_light_change(self, event):
+        _LOGGER.debug(f"[Animations external_light_change] event: {event}")
         entity_id = event.data.get("entity_id")
         state = event.data.get("new_state").state
         if state == "on" and event.data.get("old_state").state == "off":
@@ -465,15 +510,20 @@ class Animations:
             await animation.update_light(entity_id)
 
     def get_animation_by_priority(self, priority) -> Animation | None:
+        _LOGGER.debug(f"[Animations get_animation_by_priority] priority: {priority}")
         for animation in self.animations:
             if animation._priority == priority:
                 return animation
         return None
 
     def get_animation_for_light(self, entity_id) -> Animation:
+        _LOGGER.debug(f"[Animations get_animation_for_light] entity_id: {entity_id}")
         return self._light_owner[entity_id]
 
     def refresh_animation_for_light(self, entity_id) -> Animation:
+        _LOGGER.debug(
+            f"[Animations refresh_animation_for_light] entity_id: {entity_id}"
+        )
         selected = None
         selected_priority = -(2**31)
         for animation in self._light_animations[entity_id]:
@@ -486,6 +536,7 @@ class Animations:
         return selected
 
     async def start(self, data):
+        _LOGGER.debug(f"[Animations start] data: {data}")
         config = self.validate_start(data)
         id = data[CONF_NAME]
         if id in self.animations:
@@ -506,6 +557,7 @@ class Animations:
         await animation.start()
 
     async def stop(self, data):
+        _LOGGER.debug(f"[Animations stop] data: {data}")
         config = self.validate_stop(data)
         id = config.get(CONF_NAME)
         _LOGGER.info("Stopping animation '%s'", id)
@@ -513,21 +565,40 @@ class Animations:
             await self.animations[id].stop()
 
     def refresh_listener(self):
+        _LOGGER.debug(f"[Animations refresh_listener]")
+        _LOGGER.debug(
+            f"[Animations refresh_listener] self.states: {self.states}, self.states.keys: {self.states.keys()}"
+        )
+
         if self._external_light_listener is not None:
-            self._external_light_listener()
+            _LOGGER.debug(
+                f"[Animations refresh_listener] running _external_light_listener: {self._external_light_listener}"
+            )
+            try:
+                self._external_light_listener()
+            except ValueError as e:
+                _LOGGER.debug(
+                    f"Unable to remove external_light_listener. {e.__class__.__qualname__}: {e}"
+                )
+                pass
             self._external_light_listener is None
         if len(self.states) > 0:
             self._external_light_listener = async_track_state_change_event(
                 self.hass, self.states.keys(), self.external_light_change
             )
+            _LOGGER.debug(
+                f"[Animations refresh_listener] setting _external_light_listener: {self._external_light_listener}"
+            )
 
     def release_animation(self, animation: Animation):
+        _LOGGER.debug(f"[Animations release_animation] animation: {animation._name}")
         del self.animations[animation._name]
         self.refresh_listener()
 
     async def release_light(
         self, animation: Animation, entity_id, skip_ownership=False, skip_restore=False
     ):
+        _LOGGER.debug(f"[Animations release_light] entity_id: {entity_id}")
         self._light_animations[entity_id].remove(animation)
         if self._light_owner[entity_id] != animation:
             return _LOGGER.info(
@@ -558,6 +629,7 @@ class Animations:
         del self.states[entity_id]
 
     async def add_lights_to_animation(self, data):
+        _LOGGER.debug(f"[Animations add_lights_to_animation] data: {data}")
         config = ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA(dict(data))
         lights = config.get(CONF_LIGHTS)
         name = config.get(CONF_NAME)
@@ -581,6 +653,7 @@ class Animations:
         animation.add_lights(lights)
 
     async def remove_lights(self, data):
+        _LOGGER.debug(f"[Animations remove_lights] data: {data}")
         config = REMOVE_LIGHTS_SERVICE_SCHEMA(dict(data))
         lights = config.get(CONF_LIGHTS)
         skip_restore = config.get(CONF_SKIP_RESTORE)
@@ -604,26 +677,30 @@ class Animations:
                 await animation.stop()
 
     def store_state(self, light):
+        _LOGGER.debug(f"[Animations store_state] light: {light}")
         if light not in self.states:
             self.states[light] = self.hass.states.get(light)
 
     def store_states(self, lights):
+        _LOGGER.debug(f"[Animations store_states] lights: {lights}")
         for light in lights:
             self.store_state(light)
         self.refresh_listener()
 
     def validate_start(self, data):
+        _LOGGER.debug(f"[Animations validate_start] data: {data}")
         try:
             config = START_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error("Error with received configuration, %s", err.error_message)
+            _LOGGER.error(f"Error with received configuration, {err}")
             raise IntegrationError("Service data did not match schema")
         return config
 
     def validate_stop(self, data):
+        _LOGGER.debug(f"[Animations validate_stop] data: {data}")
         try:
             config = STOP_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error("Error with received configuration, %s", err.error_message)
+            _LOGGER.error(f"Error with received configuration, {err}")
             raise IntegrationError("Service data did not match schema")
         return config

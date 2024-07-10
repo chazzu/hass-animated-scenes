@@ -1,8 +1,13 @@
 """The Animated Scenes integration."""
-from __future__ import annotations
 
-import asyncio
+import logging
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+
 from .animations import Animations
+from .const import CONF_ENTITY_TYPE, DOMAIN, ENTITY_ACTIVITY_SENSOR, ENTITY_SCENE
 from .service import (
     add_lights_to_animation,
     remove_lights,
@@ -10,12 +15,8 @@ from .service import (
     stop_animation,
 )
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-
-from .const import DOMAIN
-
-PLATFORMS = ["switch", "sensor"]
+_LOGGER = logging.getLogger(__name__)
+PLATFORMS = [Platform.SWITCH, Platform.SENSOR]
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -30,24 +31,27 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    for component in PLATFORMS:
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(entry, component)
-        )
-
+    hass.data.setdefault(DOMAIN, {})
+    hass_data = dict(entry.data)
+    hass.data[DOMAIN][entry.entry_id] = hass_data
+    if hass_data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_SCENE:
+        await hass.config_entries.async_forward_entry_setups(entry, [Platform.SWITCH])
+    else:
+        await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    unload_ok = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, component)
-                for component in PLATFORMS
-            ]
+    _LOGGER.debug(f"[async_unload_entry] entry data: {entry.data}")
+    unload_ok = False
+    if entry.data.get(CONF_ENTITY_TYPE, None) == ENTITY_SCENE:
+        unload_ok = await hass.config_entries.async_unload_platforms(
+            entry, [Platform.SWITCH]
         )
-    )
+    if entry.data.get(CONF_ENTITY_TYPE, None) == ENTITY_ACTIVITY_SENSOR:
+        unload_ok = await hass.config_entries.async_unload_platforms(
+            entry, [Platform.SENSOR]
+        )
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok
