@@ -1,7 +1,8 @@
 import logging
-from .animations import Animations
 
 from homeassistant.core import ServiceCall
+
+from .animations import Animations
 
 _LOGGER = logging.getLogger(__name__)
 

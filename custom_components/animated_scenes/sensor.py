@@ -1,8 +1,6 @@
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.core import callback
-from homeassistant.core import HomeAssistant
+
 from .animations import Animations
-from .const import EVENT_NAME_CHANGE, EVENT_STATE_STARTED, EVENT_STATE_STOPPED
 
 
 async def async_setup_entry(hass, _config, async_add_entities, _discovery_info=None):
