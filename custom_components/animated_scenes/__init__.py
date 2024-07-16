@@ -1,8 +1,11 @@
 """The Animated Scenes integration."""
-from __future__ import annotations
 
-import asyncio
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+
 from .animations import Animations
+from .const import DOMAIN
 from .service import (
     add_lights_to_animation,
     remove_lights,
@@ -10,12 +13,7 @@ from .service import (
     stop_animation,
 )
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-
-from .const import DOMAIN
-
-PLATFORMS = ["switch", "sensor"]
+PLATFORMS = [Platform.SWITCH, Platform.SENSOR]
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -30,24 +28,15 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    for component in PLATFORMS:
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(entry, component)
-        )
-
+    hass.data.setdefault(DOMAIN, {})
+    hass_data = dict(entry.data)
+    hass.data[DOMAIN][entry.entry_id] = hass_data
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    unload_ok = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, component)
-                for component in PLATFORMS
-            ]
-        )
-    )
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok
