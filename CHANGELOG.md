@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 1.2.2
+
+### Fixed
+
+- Fix submitted by @Snuffy2 to replace deprecated async_forward_entry_setup to maintain compatibility with future versions of Home Assistant
+
 ## 1.2.1
 
 ### Fixed
