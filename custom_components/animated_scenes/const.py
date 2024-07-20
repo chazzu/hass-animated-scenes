@@ -41,6 +41,8 @@ CONF_COLOR_SELECTOR_MODE = "color_selector_mode"
 COLOR_SELECTOR_YAML = "color_selector_yaml"
 COLOR_SELECTOR_RGB_UI = "color_selector_rgb_ui"
 
+CONF_ANIMATED_SCENE_SWITCH = "animated_scene_switch"
+
 ENTITY_SCENE = "scene"
 ENTITY_ACTIVITY_SENSOR = "activty_sensor"
 

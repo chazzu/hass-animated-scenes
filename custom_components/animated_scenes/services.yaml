@@ -161,9 +161,18 @@ add_lights_to_animation:
         domain: light
         multiple: True
     name:
-      name: Name
-      description: Unique ID for the animation, must already be running
+      name: Animated Scene Name
+      description: Unique ID for the animation, must already be running. Must give name or select animated scene switch to add lights to but not both.
       example: "Spooky"
-      required: true
+      required: False
       selector:
         text:
+    animated_scene_switch:
+      name: Animated Scene Switch
+      description: The selected Animated Scene must already be running. Must give name or select animated scene switch to add lights to but not both.
+      required: False
+      selector:
+        entity:
+          filter:
+            domain: switch
+            integration: animated_scenes

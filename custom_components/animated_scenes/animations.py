@@ -19,6 +19,7 @@ from homeassistant.components.light import (
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.light import VALID_TRANSITION, ColorMode
 from homeassistant.const import (
+    ATTR_FRIENDLY_NAME,
     CONF_BRIGHTNESS,
     CONF_LIGHTS,
     CONF_NAME,
@@ -32,6 +33,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from .const import (
     CONF_ANIMATE_BRIGHTNESS,
     CONF_ANIMATE_COLOR,
+    CONF_ANIMATED_SCENE_SWITCH,
     CONF_CHANGE_AMOUNT,
     CONF_CHANGE_FREQUENCY,
     CONF_CHANGE_SEQUENCE,
@@ -174,7 +176,8 @@ STOP_SERVICE_SCHEMA = vol.Schema(
 ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_LIGHTS): cv.entity_ids,
-        vol.Required(CONF_NAME): cv.string,
+        vol.Optional(CONF_NAME): cv.string,
+        vol.Optional(CONF_ANIMATED_SCENE_SWITCH): cv.entity_id,
     }
 )
 
@@ -632,7 +635,25 @@ class Animations:
         _LOGGER.debug(f"[Animations add_lights_to_animation] data: {data}")
         config = ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA(dict(data))
         lights = config.get(CONF_LIGHTS)
-        name = config.get(CONF_NAME)
+        if (
+            config.get(CONF_NAME, None) is not None
+            and config.get(CONF_ANIMATED_SCENE_SWITCH, None) is not None
+        ) or (
+            config.get(CONF_NAME, None) is None
+            and config.get(CONF_ANIMATED_SCENE_SWITCH, None) is None
+        ):
+            _LOGGER.error(
+                "Animated Scene Name or Animated Scene Switch must be listed but not both"
+            )
+            raise IntegrationError(
+                f"Animated Scene Name or Animated Scene Switch must be listed but not both"
+            )
+        elif config.get(CONF_NAME, None) is not None:
+            name = config.get(CONF_NAME)
+        else:  # config.get(CONF_ANIMATED_SCENE_SWITCH, None) is not None:
+            name = self.hass.states.get(
+                config.get(CONF_ANIMATED_SCENE_SWITCH)
+            ).attributes.get(ATTR_FRIENDLY_NAME, config.get(CONF_ANIMATED_SCENE_SWITCH))
 
         if name not in self.animations:
             _LOGGER.error("Tried to add a light to an animation that doesn't exist")
