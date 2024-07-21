@@ -227,7 +227,6 @@ class Animation:
         self.add_lights(self._lights)
 
     def add_light(self, entity_id):
-        _LOGGER.debug(f"[Animation add_light] entity_id: {entity_id}")
         state = self._hass.states.get(entity_id)
         if state.state != "off" and entity_id not in self._active_lights:
             self._active_lights.append(entity_id)
@@ -237,18 +236,13 @@ class Animation:
             and entity_id not in self._active_lights
         ):
             self._active_lights.append(entity_id)
-        _LOGGER.debug(
-            f"[Animation add_light] self._active_lights: {self._active_lights}"
-        )
 
     def add_lights(self, ids):
-        _LOGGER.debug(f"[Animation add_lights] ids: {ids}")
         for light in ids:
             self.add_light(light)
         Animations.instance.store_states(self._active_lights)
 
     async def animate(self):
-        _LOGGER.debug(f"[Animation animate]")
         try:
             while (
                 self._name in Animations.instance.animations and not self._task.done()
@@ -268,7 +262,6 @@ class Animation:
             await self.release()
 
     def build_light_attributes(self, light, initial=False):
-        _LOGGER.debug(f"[Animation build_light_attributes] light: {light}")
         if light in self._light_status and self._light_status[light]["change_one"]:
             color_or_brightness = randrange(1, 2, 1)
             if color_or_brightness == 2:
@@ -313,7 +306,6 @@ class Animation:
         return attributes
 
     def find_nearby_color(self, color):
-        _LOGGER.debug(f"[Animation find_nearby_color] color: {color}")
         selected_color = [
             color[CONF_COLOR][0],
             color[CONF_COLOR][1],
@@ -358,12 +350,10 @@ class Animation:
         return value
 
     def pick_color(self):
-        _LOGGER.debug(f"[Animation pick_color]")
         color = choices(self._colors, self._weights, k=1)
         return color.pop()
 
     def pick_lights(self, change_amount):
-        _LOGGER.debug(f"[Animation pick_lights] change_amount: {change_amount}")
         if self._ignore_off:
             to_change = []
             randomized_list = sample(self._active_lights, k=change_amount)
@@ -377,7 +367,6 @@ class Animation:
         return sample(self._active_lights, k=change_amount)
 
     async def release(self):
-        _LOGGER.debug(f"[Animation release]")
         for light in self._active_lights:
             await Animations.instance.release_light(self, light)
         Animations.instance.release_animation(self)
@@ -387,13 +376,10 @@ class Animation:
         )
 
     def remove_light(self, light: str):
-        _LOGGER.debug(f"[Animation remove_light] light: {light}")
         if light in self._active_lights:
             self._active_lights.remove(light)
-        _LOGGER.debug(f"[remove_light] self._active_lights: {self._active_lights}")
 
     async def update_light(self, entity_id, initial=False):
-        _LOGGER.debug(f"[Animation update_light] entity_id: {entity_id}")
         if Animations.instance.get_animation_for_light(entity_id) != self:
             return _LOGGER.info(
                 "Skipping light %s due to conflicting animation with higher priority, %s",
@@ -408,7 +394,6 @@ class Animation:
         )
 
     async def update_lights(self):
-        _LOGGER.debug(f"[Animation update_lights]")
         if self._change_amount == "all":
             change_amount = len(self._active_lights)
         else:
@@ -428,7 +413,6 @@ class Animation:
         await asyncio.gather(*updates)
 
     async def start(self):
-        _LOGGER.debug(f"[Animation start]")
         updates = []
         for light in self._active_lights:
             updates.append(self.update_light(light, True))
@@ -444,7 +428,6 @@ class Animation:
             )
 
     async def stop(self):
-        _LOGGER.debug(f"[Animation strop]")
         self._task.cancel()
         try:
             await self._task
@@ -463,7 +446,6 @@ class Animations:
         self.hass = hass
 
     def build_attributes_from_state(self, state):
-        _LOGGER.debug(f"[Animations build_attributes_from_state] state: {state}")
         attributes = {
             "entity_id": state.entity_id,
             "brightness": state.attributes.get("brightness"),
@@ -503,7 +485,6 @@ class Animations:
         return attributes
 
     async def external_light_change(self, event):
-        _LOGGER.debug(f"[Animations external_light_change] event: {event}")
         entity_id = event.data.get("entity_id")
         state = event.data.get("new_state").state
         if state == "on" and event.data.get("old_state").state == "off":
@@ -513,20 +494,15 @@ class Animations:
             await animation.update_light(entity_id)
 
     def get_animation_by_priority(self, priority) -> Animation | None:
-        _LOGGER.debug(f"[Animations get_animation_by_priority] priority: {priority}")
         for animation in self.animations:
             if animation._priority == priority:
                 return animation
         return None
 
     def get_animation_for_light(self, entity_id) -> Animation:
-        _LOGGER.debug(f"[Animations get_animation_for_light] entity_id: {entity_id}")
         return self._light_owner[entity_id]
 
     def refresh_animation_for_light(self, entity_id) -> Animation:
-        _LOGGER.debug(
-            f"[Animations refresh_animation_for_light] entity_id: {entity_id}"
-        )
         selected = None
         selected_priority = -(2**31)
         for animation in self._light_animations[entity_id]:
@@ -539,7 +515,6 @@ class Animations:
         return selected
 
     async def start(self, data):
-        _LOGGER.debug(f"[Animations start] data: {data}")
         config = self.validate_start(data)
         id = data[CONF_NAME]
         if id in self.animations:
@@ -560,7 +535,6 @@ class Animations:
         await animation.start()
 
     async def stop(self, data):
-        _LOGGER.debug(f"[Animations stop] data: {data}")
         config = self.validate_stop(data)
         id = config.get(CONF_NAME)
         _LOGGER.info("Stopping animation '%s'", id)
@@ -568,40 +542,28 @@ class Animations:
             await self.animations[id].stop()
 
     def refresh_listener(self):
-        _LOGGER.debug(f"[Animations refresh_listener]")
-        _LOGGER.debug(
-            f"[Animations refresh_listener] self.states: {self.states}, self.states.keys: {self.states.keys()}"
-        )
 
         if self._external_light_listener is not None:
-            _LOGGER.debug(
-                f"[Animations refresh_listener] running _external_light_listener: {self._external_light_listener}"
-            )
             try:
                 self._external_light_listener()
             except ValueError as e:
-                _LOGGER.debug(
+                _LOGGER.info(
                     f"Unable to remove external_light_listener. {e.__class__.__qualname__}: {e}"
                 )
                 pass
-            self._external_light_listener is None
+            self._external_light_listener = None
         if len(self.states) > 0:
             self._external_light_listener = async_track_state_change_event(
                 self.hass, self.states.keys(), self.external_light_change
             )
-            _LOGGER.debug(
-                f"[Animations refresh_listener] setting _external_light_listener: {self._external_light_listener}"
-            )
 
     def release_animation(self, animation: Animation):
-        _LOGGER.debug(f"[Animations release_animation] animation: {animation._name}")
         del self.animations[animation._name]
         self.refresh_listener()
 
     async def release_light(
         self, animation: Animation, entity_id, skip_ownership=False, skip_restore=False
     ):
-        _LOGGER.debug(f"[Animations release_light] entity_id: {entity_id}")
         self._light_animations[entity_id].remove(animation)
         if self._light_owner[entity_id] != animation:
             return _LOGGER.info(
@@ -632,7 +594,6 @@ class Animations:
         del self.states[entity_id]
 
     async def add_lights_to_animation(self, data):
-        _LOGGER.debug(f"[Animations add_lights_to_animation] data: {data}")
         config = ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA(dict(data))
         lights = config.get(CONF_LIGHTS)
         if (
@@ -646,11 +607,11 @@ class Animations:
                 "Animated Scene Name or Animated Scene Switch must be listed but not both"
             )
             raise IntegrationError(
-                f"Animated Scene Name or Animated Scene Switch must be listed but not both"
+                "Animated Scene Name or Animated Scene Switch must be listed but not both"
             )
-        elif config.get(CONF_NAME, None) is not None:
+        if config.get(CONF_NAME, None) is not None:
             name = config.get(CONF_NAME)
-        else:  # config.get(CONF_ANIMATED_SCENE_SWITCH, None) is not None:
+        else:
             name = self.hass.states.get(
                 config.get(CONF_ANIMATED_SCENE_SWITCH)
             ).attributes.get(ATTR_FRIENDLY_NAME, config.get(CONF_ANIMATED_SCENE_SWITCH))
@@ -674,7 +635,6 @@ class Animations:
         animation.add_lights(lights)
 
     async def remove_lights(self, data):
-        _LOGGER.debug(f"[Animations remove_lights] data: {data}")
         config = REMOVE_LIGHTS_SERVICE_SCHEMA(dict(data))
         lights = config.get(CONF_LIGHTS)
         skip_restore = config.get(CONF_SKIP_RESTORE)
@@ -698,30 +658,26 @@ class Animations:
                 await animation.stop()
 
     def store_state(self, light):
-        _LOGGER.debug(f"[Animations store_state] light: {light}")
         if light not in self.states:
             self.states[light] = self.hass.states.get(light)
 
     def store_states(self, lights):
-        _LOGGER.debug(f"[Animations store_states] lights: {lights}")
         for light in lights:
             self.store_state(light)
         self.refresh_listener()
 
     def validate_start(self, data):
-        _LOGGER.debug(f"[Animations validate_start] data: {data}")
         try:
             config = START_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error(f"Error with received configuration, {err}")
-            raise IntegrationError("Service data did not match schema")
+            _LOGGER.exception("Error with received configuration")
+            raise IntegrationError("Service data did not match schema") from err
         return config
 
     def validate_stop(self, data):
-        _LOGGER.debug(f"[Animations validate_stop] data: {data}")
         try:
             config = STOP_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error(f"Error with received configuration, {err}")
-            raise IntegrationError("Service data did not match schema")
+            _LOGGER.exception("Error with received configuration")
+            raise IntegrationError("Service data did not match schema") from err
         return config

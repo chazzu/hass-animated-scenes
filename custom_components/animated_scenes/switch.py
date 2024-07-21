@@ -109,9 +109,9 @@ async def async_setup_entry(
 class AnimatedSceneSwitch(SwitchEntity):
     _unrecorded_attributes = frozenset({MATCH_ALL})
 
-    def __init__(self, hass, config, unique_id):
+    def __init__(self, hass: HomeAssistant, config: ConfigType, unique_id: str) -> None:
         _LOGGER.debug(f"[AnimatedSceneSwitch init] config: {config}")
-        _LOGGER.debug(f"[AnimatedSceneSwitch init] unique_id: {unique_id}")
+        # _LOGGER.debug(f"[AnimatedSceneSwitch init] unique_id: {unique_id}")
         self.hass = hass
         self._config = config
         self._attr_name: str = config.get(CONF_NAME)
@@ -122,7 +122,7 @@ class AnimatedSceneSwitch(SwitchEntity):
         self._animation_config = {}
         hass.async_create_task(self._async_setup_animation_fields())
 
-    async def _async_setup_animation_fields(self):
+    async def _async_setup_animation_fields(self) -> None:
         if self._config.get(CONF_COLOR_SELECTOR_MODE, None) == COLOR_SELECTOR_RGB_UI:
             await self._async_build_colors_from_rgb_dict()
         self._animation_config = copy.deepcopy(self._config)
@@ -131,16 +131,14 @@ class AnimatedSceneSwitch(SwitchEntity):
         self._animation_config.pop(CONF_ENTITY_TYPE, None)
         self._animation_config.pop(CONF_COLOR_RGB_DICT, None)
         self._animation_config.pop(CONF_COLOR_SELECTOR_MODE, None)
-        _LOGGER.debug(f"[async_setup_animation_fields] config: {self._config}")
-        _LOGGER.debug(
-            f"[async_setup_animation_fields] animation_config: {self._animation_config}"
-        )
+        # _LOGGER.debug(f"[async_setup_animation_fields] config: {self._config}")
+        # _LOGGER.debug(f"[async_setup_animation_fields] animation_config: {self._animation_config}")
 
-    async def _async_build_colors_from_rgb_dict(self):
+    async def _async_build_colors_from_rgb_dict(self) -> None:
         color_list = list(copy.deepcopy(self._config.get(CONF_COLOR_RGB_DICT)).values())
         for color in color_list:
             color.update({CONF_COLOR_TYPE: CONF_COLOR_RGB})
-        _LOGGER.debug(f"[async_build_colors_from_rgb_dict] color_list: {color_list}")
+        # _LOGGER.debug(f"[async_build_colors_from_rgb_dict] color_list: {color_list}")
         self._config.update({CONF_COLORS: color_list})
 
     @property

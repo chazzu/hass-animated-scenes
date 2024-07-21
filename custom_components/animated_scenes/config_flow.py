@@ -85,30 +85,26 @@ COLOR_SELECTOR_OPTION_LIST = [
 ]
 
 
-def _if_list_or_int_to_str(input):
-    _LOGGER.debug(
-        f"[if_list_or_int_to_str] starting input: {input}, type: {type(input)}"
-    )
+def _if_list_or_int_to_str(input: Any) -> Any:
+    # _LOGGER.debug(f"[if_list_or_int_to_str] starting input: {input}, type: {type(input)}")
     if isinstance(input, list):
         strlist = "[" + ", ".join(str(n) for n in input) + "]"
-        _LOGGER.debug(f"[if_list_or_int_to_str] input: {input}, strlist: {strlist}")
+        # _LOGGER.debug(f"[if_list_or_int_to_str] input: {input}, strlist: {strlist}")
         return strlist
     is_int_check, is_int_value = _is_int(input)
     if is_int_check:
-        _LOGGER.debug(
-            f"[if_list_or_int_to_str] input: {input}, strint: {str(is_int_value)}"
-        )
+        # _LOGGER.debug(f"[if_list_or_int_to_str] input: {input}, strint: {str(is_int_value)}")
         return str(is_int_value)
-    _LOGGER.debug(f"[if_list_or_int_to_str] input: {input}, type: {type(input)}")
+    # _LOGGER.debug(f"[if_list_or_int_to_str] input: {input}, type: {type(input)}")
     return input
 
 
-def _strlist_to_list(input):
+def _strlist_to_list(input: str) -> list[str, Any]:
     return input.strip("][").split(",")
 
 
-def _is_int(input):
-    _LOGGER.debug(f"[is_int] starting input: {input}, type: {type(input)}")
+def _is_int(input: Any) -> tuple[bool, Any]:
+    # _LOGGER.debug(f"[is_int] starting input: {input}, type: {type(input)}")
     if input is None or not isinstance(input, (Number, str)):
         return False, input
     try:
@@ -120,35 +116,27 @@ def _is_int(input):
     return True, round(input)
 
 
-def _is_int_or_list(input, min=None, max=None):
-    _LOGGER.debug(f"[is_int_or_list] starting input: {input}, type: {type(input)}")
+def _is_int_or_list(input: Any, min: int = None, max: int = None) -> tuple[bool, Any]:
+    # _LOGGER.debug(f"[is_int_or_list] starting input: {input}, type: {type(input)}")
     if input is None:
-        _LOGGER.debug(f"[is_int_or_list] input is None: {input} (True)")
+        # _LOGGER.debug(f"[is_int_or_list] input is None: {input} (True)")
         return True, input
     is_int_check, is_int_value = _is_int(input)
     if is_int_check:
         if (min is None or is_int_value >= min) and (
             max is None or is_int_value <= max
         ):
-            _LOGGER.debug(
-                f"[is_int_or_list] input is int in range: {input} [{min}, {max}] (True)"
-            )
+            # _LOGGER.debug(f"[is_int_or_list] input is int in range: {input} [{min}, {max}] (True)")
             return True, is_int_value
-        _LOGGER.debug(
-            f"[is_int_or_list] input is int but NOT in range: {input} [{min}, {max}] (False)"
-        )
+        # _LOGGER.debug(f"[is_int_or_list] input is int but NOT in range: {input} [{min}, {max}] (False)")
         return False, input
     elif isinstance(input, str):
         input = input.strip()
         if input.startswith("[") and input.endswith("]") and input.count(",") == 1:
-            _LOGGER.debug(
-                f"[is_int_or_list] input is a 2 item string list, converting to list: {input}"
-            )
+            # _LOGGER.debug(f"[is_int_or_list] input is a 2 item string list, converting to list: {input}")
             input = _strlist_to_list(input)
         else:
-            _LOGGER.debug(
-                f"[is_int_or_list] input is a string but is not a 2 item list: {input} (False)"
-            )
+            # _LOGGER.debug(f"[is_int_or_list] input is a string but is not a 2 item list: {input} (False)")
             return False, input
 
     if isinstance(input, list):
@@ -156,9 +144,7 @@ def _is_int_or_list(input, min=None, max=None):
             is_int0_check, is_int0_value = _is_int(input[0])
             is_int1_check, is_int1_value = _is_int(input[1])
             if not (is_int0_check and is_int1_check):
-                _LOGGER.debug(
-                    f"[is_int_or_list] input is a 2 item list, but 2 items aren't integers: {input} (False)"
-                )
+                # _LOGGER.debug(f"[is_int_or_list] input is a 2 item list, but 2 items aren't integers: {input} (False)")
                 return False, input
             if is_int0_value > is_int1_value:
                 input = [is_int1_value, is_int0_value]
@@ -168,67 +154,55 @@ def _is_int_or_list(input, min=None, max=None):
                 max is None or (input[0] <= max and input[1] <= max)
             ):
                 if input[0] == input[1]:
-                    _LOGGER.debug(
-                        f"[is_int_or_list] input is int in range: {input} [{min}, {max}] (True)"
-                    )
+                    # _LOGGER.debug(f"[is_int_or_list] input is int in range: {input} [{min}, {max}] (True)")
                     return True, input[0]
-                _LOGGER.debug(
-                    f"[is_int_or_list] input is a 2 int list within min, max: {input} [{min}, {max}] (True)"
-                )
+                # _LOGGER.debug(f"[is_int_or_list] input is a 2 int list within min, max: {input} [{min}, {max}] (True)")
                 return True, input
-            _LOGGER.debug(
-                f"[is_int_or_list] input is a 2 item list, but not within min, max: {input} [{min}, {max}] (False)"
-            )
+            # _LOGGER.debug(f"[is_int_or_list] input is a 2 item list, but not within min, max: {input} [{min}, {max}] (False)")
             return False, input
-        _LOGGER.debug(
-            f"[is_int_or_list] input is a list, but doesn't have 2 items: {input} (False)"
-        )
+        # _LOGGER.debug(f"[is_int_or_list] input is a list, but doesn't have 2 items: {input} (False)")
         return False, input
-    _LOGGER.debug(
-        f"[is_int_or_list] input does not meet any criteria: {input}, type: {type(input)} (False)"
-    )
+    # _LOGGER.debug(f"[is_int_or_list] input does not meet any criteria: {input}, type: {type(input)} (False)")
     return False, input
 
 
-def _is_int_list_or_all(input, min=None, max=None):
-    _LOGGER.debug(f"[is_int_list_or_all] starting input: {input}, type: {type(input)}")
+def _is_int_list_or_all(
+    input: Any, min: int = None, max: int = None
+) -> tuple[bool, Any]:
+    # _LOGGER.debug(f"[is_int_list_or_all] starting input: {input}, type: {type(input)}")
     if input is None:
-        _LOGGER.debug(f"[is_int_list_or_all] input is None: {input} (True)")
+        # _LOGGER.debug(f"[is_int_list_or_all] input is None: {input} (True)")
         return True, input
     is_int_or_list_check, is_int_or_list_value = _is_int_or_list(input, min, max)
     if is_int_or_list_check:
-        _LOGGER.debug(
-            f"[is_int_list_or_all] input is valid int or list: {is_int_or_list_value} (True)"
-        )
+        # _LOGGER.debug(f"[is_int_list_or_all] input is valid int or list: {is_int_or_list_value} (True)")
         return True, is_int_or_list_value
     if isinstance(input, str):
         input = input.strip()
     if input == "all":
-        _LOGGER.debug(f"[is_int_list_or_all] input is 'all': {input} (True)")
+        # _LOGGER.debug(f"[is_int_list_or_all] input is 'all': {input} (True)")
         return True, input
-    _LOGGER.debug(
-        f"[is_int_list_or_all] input does not meet any criteria: {input}, type: {type(input)} (False)"
-    )
+    # _LOGGER.debug(f"[is_int_list_or_all] input does not meet any criteria: {input}, type: {type(input)} (False)")
     return False, input
 
 
-def _overrride_max_change_amount(input, light_count):
+def _overrride_max_change_amount(input: Any, light_count: int) -> Any:
     _LOGGER.debug(
         f"[overrride_max_change_amount] input: {input}, light_count: {light_count}"
     )
     if isinstance(input, int) and input > light_count:
-        _LOGGER.debug(f"[overrride_max_change_amount] return: 'all'")
+        # _LOGGER.debug("[overrride_max_change_amount] return: 'all'")
         return "all"
-    elif isinstance(input, list) and input[1] > light_count:
+    if isinstance(input, list) and input[1] > light_count:
         if input[0] >= light_count:
-            _LOGGER.debug(f"[overrride_max_change_amount] return: 'all'")
+            # _LOGGER.debug("[overrride_max_change_amount] return: 'all'")
             return "all"
         input[1] = light_count
-    _LOGGER.debug(f"[overrride_max_change_amount] return: {input}")
+    # _LOGGER.debug(f"[overrride_max_change_amount] return: {input}")
     return input
 
 
-def _clean_color_rgb_dict(color_rgb_dict):
+def _clean_color_rgb_dict(color_rgb_dict: dict) -> dict:
     _LOGGER.debug(f"[clean_color_rgb_dict] initial color_rgb_dict: {color_rgb_dict}")
     for key, color in copy.deepcopy(color_rgb_dict).items():
         color_rgb_dict.get(key).pop(CONF_COLOR_ADD_COLOR, None)
@@ -241,13 +215,16 @@ def _clean_color_rgb_dict(color_rgb_dict):
 
 
 async def _async_build_schema(
-    hass: HomeAssistant, user_input: list, default_dict: list, options_flow=False
-) -> Any:
+    hass: HomeAssistant,
+    user_input: list,
+    default_dict: list,
+    options_flow: bool = False,
+) -> vol.Schema:
     """Gets a schema using the default_dict as a backup."""
     if user_input is None:
         user_input = {}
 
-    def _get_default(key: str, fallback_default: Any = None) -> None:
+    def _get_default(key: str, fallback_default: Any = None) -> Any:
         """Gets default value for key."""
         return user_input.get(key, default_dict.get(key, fallback_default))
 
@@ -350,13 +327,16 @@ async def _async_build_schema(
 
 
 async def _async_build_color_yaml_schema(
-    hass: HomeAssistant, user_input: list, default_dict: list, options_flow=False
-) -> Any:
+    hass: HomeAssistant,
+    user_input: list,
+    default_dict: list,
+    options_flow: bool = False,
+) -> vol.Schema:
     """Gets a schema using the default_dict as a backup."""
     if user_input is None:
         user_input = {}
 
-    def _get_default(key: str, fallback_default: Any = None) -> None:
+    def _get_default(key: str, fallback_default: Any = None) -> Any:
         """Gets default value for key."""
         return user_input.get(key, default_dict.get(key, fallback_default))
 
@@ -386,14 +366,14 @@ async def _async_build_color_rgb_ui_schema(
     hass: HomeAssistant,
     user_input: list,
     default_dict: list,
-    options_flow=False,
-    is_last_color=False,
-) -> Any:
+    options_flow: bool = False,
+    is_last_color: bool = False,
+) -> vol.Schema:
     """Gets a schema using the default_dict as a backup."""
     if user_input is None:
         user_input = {}
 
-    def _get_default(key: str, fallback_default: Any = None) -> None:
+    def _get_default(key: str, fallback_default: Any = None) -> Any:
         """Gets default value for key."""
         return user_input.get(key, default_dict.get(key, fallback_default))
 
@@ -466,7 +446,7 @@ async def _async_build_color_rgb_ui_schema(
 class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize."""
         self._data = {}
         self._data[CONF_COLOR_RGB_DICT] = {}
@@ -474,15 +454,15 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         self._errors = {}
         self._entry = None
 
-    async def async_step_user(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
-        _LOGGER.debug(f"hass data: {self.hass.data[DOMAIN]}")
+        # _LOGGER.debug(f"hass data: {self.hass.data[DOMAIN]}")
         activity_sensor_exists = False
         for entity in self.hass.data[DOMAIN].values():
-            _LOGGER.debug(f"entity (type: {type(entity)}): {entity}")
-            _LOGGER.debug(
-                f"Entity: {entity.get(CONF_NAME, None)}, entity_type: {entity.get(CONF_ENTITY_TYPE, None)}"
-            )
+            # _LOGGER.debug(f"entity (type: {type(entity)}): {entity}")
+            # _LOGGER.debug(f"Entity: {entity.get(CONF_NAME, None)}, entity_type: {entity.get(CONF_ENTITY_TYPE, None)}")
             if entity.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR:
                 activity_sensor_exists = True
                 break
@@ -495,16 +475,16 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
     async def async_step_activity_sensor(
-        self, user_input: dict[str, Any] | None = None, yaml_import=False
+        self, user_input: dict[str, Any] | None = None, yaml_import: bool = False
     ) -> ConfigFlowResult:
         self._data.update(
             {CONF_NAME: "Activity Sensor", CONF_ENTITY_TYPE: ENTITY_ACTIVITY_SENSOR}
         )
-        _LOGGER.debug(f"[async_step_activity_sensor] self._data: {self._data}")
+        # _LOGGER.debug(f"[async_step_activity_sensor] self._data: {self._data}")
         return self.async_create_entry(title="Activity Sensor", data=self._data)
 
     async def async_step_scene(
-        self, user_input: dict[str, Any] | None = None, yaml_import=False
+        self, user_input: dict[str, Any] | None = None, yaml_import: bool = False
     ) -> ConfigFlowResult:
 
         self._errors = {}
@@ -580,7 +560,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
-            _LOGGER.debug(f"[async_step_scene] self._data: {self._data}")
+            # _LOGGER.debug(f"[async_step_scene] self._data: {self._data}")
             if self._errors == {}:
                 if yaml_import:
                     self._data.update({CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_YAML})
@@ -620,7 +600,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = ERROR_COLORS_MALFORMED
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
-            _LOGGER.debug(f"[async_step_color_yaml] self._data: {self._data}")
+            # _LOGGER.debug(f"[async_step_color_yaml] self._data: {self._data}")
             if self._errors == {}:
                 return self.async_create_entry(
                     title=self._data[CONF_NAME], data=self._data
@@ -680,7 +660,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             if self._errors == {}:
                 color_uuid = uuid.random_uuid_hex()
                 self._data.get(CONF_COLOR_RGB_DICT).update({color_uuid: user_input})
-                _LOGGER.debug(f"[async_step_color_rgb_ui] self._data: {self._data}")
+                # _LOGGER.debug(f"[async_step_color_rgb_ui] self._data: {self._data}")
                 if user_input.get(CONF_COLOR_ADD_COLOR, False):
                     return await self.async_step_color_rgb_ui()
                 self._data.update(
@@ -693,7 +673,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=self._data[CONF_NAME], data=self._data
                 )
-            _LOGGER.debug(f"[async_step_color_rgb_ui] user_input: {user_input}")
+            # _LOGGER.debug(f"[async_step_color_rgb_ui] user_input: {user_input}")
 
         return self.async_show_form(
             step_id="color_rgb_ui",
@@ -710,24 +690,13 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         self, import_config: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Import a config entry from configuration.yaml."""
-
-        # if (
-        #     import_config.get(CONF_ID, None) is None
-        #     or import_config.get(CONF_SECRET, None) is None
-        #     or import_config.get(CONF_API_ENDPOINT, None) is None
-        #     or import_config.get(CONF_TOKEN_ENDPOINT, None) is None
-        # ):
-        #     _LOGGER.error(
-        #         f"Invalid YAML Config. Cannot Import: {import_config}"
-        #     )
-        #     return
         import_config.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
         _LOGGER.debug(f"[async_step_import] import_config: {import_config}")
         return await self.async_step_scene(user_input=import_config, yaml_import=True)
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry):
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Options callback"""
         return AnimatedScenesOptionsFlowHandler(config_entry)
 
@@ -735,7 +704,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
 class AnimatedScenesOptionsFlowHandler(OptionsFlow):
     """Config flow options. Does not actually store these into Options but updates the Config instead."""
 
-    def __init__(self, config_entry):
+    def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize."""
         self.config = config_entry
         self._data = dict(config_entry.data)
@@ -757,7 +726,9 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             return self.async_abort(reason=ABORT_ACTIVITY_SENSOR_NO_OPTIONS)
         return await self.async_step_scene(user_input=user_input)
 
-    async def async_step_scene(self, user_input=None):
+    async def async_step_scene(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         self._errors = {}
 
         # Defaults
@@ -831,7 +802,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             )
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
-            _LOGGER.debug(f"[async_init_user] self._data: {self._data}")
+            # _LOGGER.debug(f"[async_init_user] self._data: {self._data}")
             if self._errors == {}:
                 if (
                     self._data.get(CONF_COLOR_SELECTOR_MODE, COLOR_SELECTOR_RGB_UI)
@@ -869,7 +840,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                 self._errors["base"] = ERROR_COLORS_MALFORMED
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
-            _LOGGER.debug(f"[async_step_color_yaml] self._data: {self._data}")
+            # _LOGGER.debug(f"[async_step_color_yaml] self._data: {self._data}")
             if self._errors == {}:
                 self._data.update({CONF_COLOR_RGB_DICT: {}})
                 self.hass.config_entries.async_update_entry(
@@ -947,7 +918,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                     self._rgb_ui_color_index + 1 >= self._rgb_ui_color_max
                     and color_data.get(CONF_COLOR_ADD_COLOR, False)
                 ):
-                    _LOGGER.debug(f"[async_step_color_rgb_ui] self._data: {self._data}")
+                    # _LOGGER.debug(f"[async_step_color_rgb_ui] self._data: {self._data}")
                     self._rgb_ui_color_index += 1
                     return await self.async_step_color_rgb_ui()
                 self._data.update({CONF_COLORS: {}})
@@ -958,13 +929,13 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                         )
                     }
                 )
-                _LOGGER.debug(f"[async_step_color_rgb_ui] self._data: {self._data}")
+                # _LOGGER.debug(f"[async_step_color_rgb_ui] self._data: {self._data}")
                 self.hass.config_entries.async_update_entry(
                     self.config, data=self._data, options=self.config.options
                 )
                 await self.hass.config_entries.async_reload(self.config.entry_id)
                 return self.async_create_entry(title="", data={})
-            _LOGGER.debug(f"[async_step_color_rgb_ui] color_data: {color_data}")
+            # _LOGGER.debug(f"[async_step_color_rgb_ui] color_data: {color_data}")
 
         return self.async_show_form(
             step_id="color_rgb_ui",

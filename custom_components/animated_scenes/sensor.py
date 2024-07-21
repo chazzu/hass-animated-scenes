@@ -1,6 +1,9 @@
 import logging
 
 from homeassistant.components.sensor import ENTITY_ID_FORMAT, SensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .animations import Animations
 from .const import DEFAULT_ACTIVITY_SENSOR_ICON
@@ -8,12 +11,17 @@ from .const import DEFAULT_ACTIVITY_SENSOR_ICON
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, _config, async_add_entities, _discovery_info=None):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     async_add_entities([AnimatedScenesSensor(hass)])
 
 
 class AnimatedScenesSensor(SensorEntity):
-    def __init__(self, hass):
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
         self._attr_native_unit_of_measurement = "active animation(s)"
         self._attr_state_class = "measurement"
         self._attr_has_entity_name = True
