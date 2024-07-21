@@ -248,7 +248,7 @@ class Animation:
         Animations.instance.store_states(self._active_lights)
 
     async def animate(self):
-        _LOGGER.debug(f"[Animation animate]")
+        _LOGGER.debug("[Animation animate]")
         try:
             while (
                 self._name in Animations.instance.animations and not self._task.done()
@@ -358,7 +358,7 @@ class Animation:
         return value
 
     def pick_color(self):
-        _LOGGER.debug(f"[Animation pick_color]")
+        _LOGGER.debug("[Animation pick_color]")
         color = choices(self._colors, self._weights, k=1)
         return color.pop()
 
@@ -377,7 +377,7 @@ class Animation:
         return sample(self._active_lights, k=change_amount)
 
     async def release(self):
-        _LOGGER.debug(f"[Animation release]")
+        _LOGGER.debug("[Animation release]")
         for light in self._active_lights:
             await Animations.instance.release_light(self, light)
         Animations.instance.release_animation(self)
@@ -408,7 +408,7 @@ class Animation:
         )
 
     async def update_lights(self):
-        _LOGGER.debug(f"[Animation update_lights]")
+        _LOGGER.debug("[Animation update_lights]")
         if self._change_amount == "all":
             change_amount = len(self._active_lights)
         else:
@@ -428,7 +428,7 @@ class Animation:
         await asyncio.gather(*updates)
 
     async def start(self):
-        _LOGGER.debug(f"[Animation start]")
+        _LOGGER.debug("[Animation start]")
         updates = []
         for light in self._active_lights:
             updates.append(self.update_light(light, True))
@@ -444,7 +444,7 @@ class Animation:
             )
 
     async def stop(self):
-        _LOGGER.debug(f"[Animation strop]")
+        _LOGGER.debug("[Animation stop]")
         self._task.cancel()
         try:
             await self._task
@@ -568,7 +568,7 @@ class Animations:
             await self.animations[id].stop()
 
     def refresh_listener(self):
-        _LOGGER.debug(f"[Animations refresh_listener]")
+        _LOGGER.debug("[Animations refresh_listener]")
         _LOGGER.debug(
             f"[Animations refresh_listener] self.states: {self.states}, self.states.keys: {self.states.keys()}"
         )
@@ -713,7 +713,7 @@ class Animations:
         try:
             config = START_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error(f"Error with received configuration, {err}")
+            _LOGGER.exception(f"Error with received configuration, {err}")
             raise IntegrationError("Service data did not match schema")
         return config
 
@@ -722,6 +722,6 @@ class Animations:
         try:
             config = STOP_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error(f"Error with received configuration, {err}")
+            _LOGGER.exception(f"Error with received configuration, {err}")
             raise IntegrationError("Service data did not match schema")
         return config

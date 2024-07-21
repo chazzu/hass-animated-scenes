@@ -6,13 +6,13 @@ start_animation:
       name: Name
       description: Unique ID for the animation, to be used to turn it off later
       example: "Spooky"
-      required: true
+      required: True
       selector:
         text:
     priority:
       name: Priority
       description: Sets a priority for this animation. If multiple animations use the same light, the one with the higher priority will "win" and take control of the light.
-      required: true
+      required: True
       example: 100
       default: 0
       selector:
@@ -24,7 +24,7 @@ start_animation:
       name: Transition
       description: How long a light should take to transition from it's former state to it's new state.
       example: 1
-      required: true
+      required: True
       default: 1
       selector:
         number:
@@ -36,7 +36,7 @@ start_animation:
       name: Change Frequency
       description: How often the animation should change something. Lower values means things will be changing faster, which requires higher system specs.
       example: 1
-      required: false
+      required: False
       default: 1
       selector:
         number:
@@ -52,65 +52,66 @@ start_animation:
     ignore_off:
       name: Ignore if Off
       description: If a light in the animation list is off, turn it on.
-      example: true
-      required: true
-      default: true
+      example: True
+      required: True
+      default: True
       selector:
         boolean:
     restore:
       name: Restore State at Animation End
       description: When the animation ends, restore lights to their prior state.
-      example: true
-      required: true
-      default: true
+      example: True
+      required: True
+      default: True
       selector:
         boolean:
     restore_power:
       name: Restore Power at Animation End
       description: When the animation ends, turn any lights that were off back to off.
-      example: true
-      required: true
-      default: false
+      example: True
+      required: True
+      default: False
       selector:
         boolean:
+
     change_sequence:
       name: Change in Sequence
       description: If set to true, then color changes will happen in order. If set to false, colors will be chosen randomly from the list.
-      default: false
-      required: true
+      default: False
+      required: True
       selector:
         boolean:
     animate_brightness:
       name: Animate Brightness
       description: Whether or not to animate the brightness. If set to false, brightness will be set once upon startup.
-      default: true
-      required: true
+      default: True
+      required: True
       selector:
         boolean:
     animate_color:
       name: Animate Colors
       description: Whether or not to animate the colors. If set to false, colors will be set once upon startup.
-      default: true
-      required: true
+      default: True
+      required: True
       selector:
         boolean:
     lights:
       name: Lights
       description: The lights to include in the animation
-      required: true
+      required: True
       selector:
         entity:
           domain: light
-          multiple: true
+          multiple: True
     colors:
       name: Colors
       description: The list of colors. Due to limitations in Home Assistant, you will need to specify this in YAML form. See the documentation for details.
       selector:
         object:
-      required: true
+      required: True
       default:
         - color_type: rgb_color
-          color: [ 255, 0, 0 ]
+          color: [255, 0, 0]
           brightness: [0, 255]
           one_change_per_tick: True
           nearby_colors: 0
@@ -124,7 +125,7 @@ stop_animation:
       name: Name
       description: Unique ID for the animation, used when starting it.
       example: "Spooky"
-      required: true
+      required: True
       selector:
         text:
 
@@ -137,9 +138,9 @@ remove_lights:
       description: The lights to stop animating
       required: True
       selector:
-       entity:
-        domain: light
-        multiple: True
+        entity:
+          domain: light
+          multiple: True
     skip_restore:
       name: Skip Restore State at Animation End
       description: If set to true, do not restore the lights to their prior state even if the animation is configured to do so.
@@ -157,9 +158,9 @@ add_lights_to_animation:
       description: The lights to add to the animation
       required: True
       selector:
-       entity:
-        domain: light
-        multiple: True
+        entity:
+          domain: light
+          multiple: True
     name:
       name: Animated Scene Name
       description: Unique ID for the animation, must already be running. Must give name or select animated scene switch to add lights to but not both.
