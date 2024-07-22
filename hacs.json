@@ -1,5 +1,6 @@
 {
     "name": "Animated Scenes",
-    "domains": ["switch", "sensor"],
-    "country": "US"
+    "render_readme": true,
+    "zip_release": true,
+    "filename": "animated_scenes.zip"
   }
