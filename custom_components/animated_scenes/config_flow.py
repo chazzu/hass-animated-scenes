@@ -323,10 +323,7 @@ async def _async_build_schema(
 
 
 async def _async_build_color_yaml_schema(
-    hass: HomeAssistant,
-    user_input: list,
-    default_dict: list,
-    options_flow: bool = False,
+    user_input: list, default_dict: list
 ) -> vol.Schema:
     """Gets a schema using the default_dict as a backup."""
     if user_input is None:
@@ -471,7 +468,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
     async def async_step_activity_sensor(
-        self, user_input: dict[str, Any] | None = None, yaml_import: bool = False
+        self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         self._data.update(
             {CONF_NAME: "Activity Sensor", CONF_ENTITY_TYPE: ENTITY_ACTIVITY_SENSOR}
@@ -612,9 +609,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
         return self.async_show_form(
             step_id="color_yaml",
-            data_schema=await _async_build_color_yaml_schema(
-                self.hass, user_input, defaults
-            ),
+            data_schema=await _async_build_color_yaml_schema(user_input, defaults),
             errors=self._errors,
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
@@ -865,9 +860,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
 
         return self.async_show_form(
             step_id="color_yaml",
-            data_schema=await _async_build_color_yaml_schema(
-                self.hass, user_input, self._data, options_flow=True
-            ),
+            data_schema=await _async_build_color_yaml_schema(user_input, self._data),
             errors=self._errors,
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
