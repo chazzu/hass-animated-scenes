@@ -272,14 +272,10 @@ async def _async_build_schema(
             ): selector.TextSelector(selector.TextSelectorConfig()),
             vol.Optional(
                 CONF_BRIGHTNESS,
-                default=_get_default(CONF_BRIGHTNESS, DEFAULT_BRIGHTNESS),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=0,
-                    max=255,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
+                default=_if_list_or_int_to_str(
+                    _get_default(CONF_BRIGHTNESS, DEFAULT_BRIGHTNESS)
+                ),
+            ): selector.TextSelector(selector.TextSelectorConfig()),
             vol.Optional(
                 CONF_CHANGE_SEQUENCE,
                 default=_get_default(CONF_CHANGE_SEQUENCE, DEFAULT_CHANGE_SEQUENCE),
@@ -544,11 +540,20 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._data.update({CONF_CHANGE_FREQUENCY: change_frequency_value})
             else:
                 self._errors["base"] = ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE
+            _LOGGER.debug(
+                f"Checking Brightness: {self._data.get(CONF_BRIGHTNESS, None)}, type: {type(self._data.get(CONF_BRIGHTNESS, None))}"
+            )
+            brightness_check, brightness_value = _is_int_or_list(
+                self._data.get(CONF_BRIGHTNESS, None),
+                BRIGHTNESS_MIN,
+                BRIGHTNESS_MAX,
+            )
+            if brightness_check:
+                self._data.update({CONF_BRIGHTNESS: brightness_value})
+            else:
+                self._errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
             self._data.update(
                 {CONF_PRIORITY: round(self._data.get(CONF_PRIORITY, None))}
-            )
-            self._data.update(
-                {CONF_BRIGHTNESS: round(self._data.get(CONF_BRIGHTNESS, None))}
             )
             self._data.update(
                 {
@@ -786,11 +791,20 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                 self._data.update({CONF_CHANGE_FREQUENCY: change_frequency_value})
             else:
                 self._errors["base"] = ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE
+            _LOGGER.debug(
+                f"Checking Brightness: {self._data.get(CONF_BRIGHTNESS, None)}, type: {type(self._data.get(CONF_BRIGHTNESS, None))}"
+            )
+            brightness_check, brightness_value = _is_int_or_list(
+                self._data.get(CONF_BRIGHTNESS, None),
+                BRIGHTNESS_MIN,
+                BRIGHTNESS_MAX,
+            )
+            if brightness_check:
+                self._data.update({CONF_BRIGHTNESS: brightness_value})
+            else:
+                self._errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
             self._data.update(
                 {CONF_PRIORITY: round(self._data.get(CONF_PRIORITY, None))}
-            )
-            self._data.update(
-                {CONF_BRIGHTNESS: round(self._data.get(CONF_BRIGHTNESS, None))}
             )
             self._data.update(
                 {
