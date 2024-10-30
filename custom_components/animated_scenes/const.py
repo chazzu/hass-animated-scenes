@@ -2,7 +2,7 @@
 
 INTEGRATION_NAME = "Animated Scenes"
 DOMAIN = "animated_scenes"
-VERSION = "1.2.1"
+VERSION = "2.0.0"
 COMPONENT_COLOR_CONFIG_URL = (
     "https://github.com/chazzu/hass-animated-scenes#color-configuration"
 )
