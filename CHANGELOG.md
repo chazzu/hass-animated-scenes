@@ -1,6 +1,16 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 2.0.0
+
+### Changes
+
+- [Snuffy2](https://github.com/Snuffy2) has created a config flow for Animated Scenes. This will import the existing YAML configurations and create devices in the UI, as well as provides a new way to add new animations through the UI. The README has been updated accordingly.
+
+### Breaking Changes
+
+- When migrating to the new config flow, the existing activity sensor must be removed through the UI, and then re-added. The readme has been updated with instructions on doing this. This is probably for the best, as the original was misnamed by accident and was too generic.
+
 ## 1.2.2
 
 ### Fixed

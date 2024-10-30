@@ -1,0 +1,163 @@
+{
+    "title": "Animated Scenes",
+    "config": {
+        "step": {
+            "user": {
+                "title": "Animated Scenes",
+                "menu_options": {
+                    "activity_sensor": "Create the Activity Sensor",
+                    "scene": "Create a New Animated Scene"
+                  }          
+            },
+            "scene": {
+                "title": "Animated Scenes",
+                "data": {
+                    "name": "Scene Name",
+                    "icon": "Scene Icon",
+                    "priority": "Priority",
+                    "transition": "Transition Duration",
+                    "change_frequency": "Change Frequency",
+                    "change_amount": "Change Amount",
+                    "ignore_off": "Ignore if Off",
+                    "restore": "Restore State at Animation End",
+                    "restore_power": "Restore Power at Animation End",
+                    "change_sequence": "Change in Sequence",
+                    "brightness": "Brightness",
+                    "animate_brightness": "Animate Brightness",
+                    "animate_color": "Animate Color",
+                    "lights": "Lights*",
+                    "color_selector_mode": "Color Selector Mode*"
+                },
+                "data_description": {
+                    "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light.",
+                    "transition": "How many seconds a light should take to transition from its former state to its new state. Can be a number or a range in the format of '[2, 5]' (means to transition the lights over 2 to 5 seconds). Min: 0, Max: 6553.",
+                    "change_frequency": "After how many seconds the animation should change. Can be a number or a range in the format of '[2, 5]' (means to change lights every 2 to 5 seconds). Min: 0, Max: 60.",
+                    "change_amount": "How many lights should be changed each time the frequency is hit. Can be a number, a range in the format of '[2, 5]' (means to change between 2 to 5 lights), or specifying the word 'all' will change all lights each time. Min: 0, Max: 65535.",
+                    "ignore_off": "If a light in the animation list is off when the animation starts, turn it on. Defaults to True, meaning lights will be ignored if they are off.",
+                    "restore": "When the animation ends, restore lights to their prior state.",
+                    "restore_power": "When the animation ends, turn any lights that were off back to off.",
+                    "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
+                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",                    
+                    "animate_brightness": "Whether or not to animate the brightness. If false, brightness will be set once upon startup.",
+                    "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
+                    "lights": "The lights to include in the animation."                },
+                "description": "Create a new animated scene"
+            },
+            "color_yaml": {
+                "title": "Animated Scenes",
+                "data": {
+                    "colors": "Colors"
+                },
+                "data_description": {
+                    "colors": "The list of colors. Due to limitations in Home Assistant, you will need to specify this in YAML form. See [Color Configuration Options]({component_color_config_url}) for details."
+                },
+                "description": "See [Color Configuration Options]({component_color_config_url}) for details"
+            },
+            "color_rgb_ui": {
+                "title": "Animated Scenes",
+                "data": {
+                    "color": "Choose the Color",
+                    "brightness": "Brightness",
+                    "nearby_colors": "Use Nearby Colors",
+                    "one_change_per_tick": "One Change per Tick",
+                    "weight": "Color Weight",
+                    "color_add_color": "Add Another Color",
+                    "color_delete_color": "Delete This Color"
+                },
+                "data_description": {
+                    "brightness": "Sets the brightness for this color. Can be a number or a range in the format of '[125, 255]' (means to set this color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
+                    "one_change_per_tick": "If set to true, only the brightness OR color will change at one time.",
+                    "nearby_colors": "If set to a number between 1 and 10, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color. Set to 0 to disable.",
+                    "weight": "The higher the number, the more likely a color is to appear in the animation. Min: 0, Max: 255."
+                },
+                "description": "Select a color to use in the animation.\n\n**Color #{color_count}**"
+            }
+        },
+        "error": {
+            "change_amount_not_int_or_all": "Change Amount: Not an integer or 'all'. Min: 0, Max: 65535",
+            "change_frequency_not_int_or_range": "Change Frequency: Not an integer or range in format '[2,5]'. Min: 0, Max: 60",
+            "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
+            "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
+            "colors_is_blank": "Colors: Cannot be blank or empty",
+            "colors_malformed": "Colors: Invalid format"
+        }
+    },
+    "options": {
+        "step": {
+            "scene": {
+                "title": "Animated Scenes",
+                "data": {
+                    "priority": "Priority",
+                    "transition": "Transition Duration",
+                    "change_frequency": "Change Frequency",
+                    "change_amount": "Change Amount",
+                    "ignore_off": "Ignore if Off",
+                    "restore": "Restore State at Animation End",
+                    "restore_power": "Restore Power at Animation End",
+                    "change_sequence": "Change in Sequence",
+                    "brightness": "Brightness",
+                    "animate_brightness": "Animate Brightness",
+                    "animate_color": "Animate Color",
+                    "lights": "Lights*",
+                    "color_selector_mode": "Color Selector Mode*"
+                },
+                "data_description": {
+                    "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light.",
+                    "transition": "How many seconds a light should take to transition from its former state to its new state. Can be a number or a range in the format of '[2, 5]' (means to transition the lights over 2 to 5 seconds). Min: 0, Max: 6553.",
+                    "change_frequency": "After how many seconds the animation should change. Can be a number or a range in the format of '[2, 5]' (means to change lights every 2 to 5 seconds). Min: 0, Max: 60.",
+                    "change_amount": "How many lights should be changed each time the frequency is hit. Can be a number, a range in the format of '[2, 5]' (means to change between 2 to 5 lights), or specifying the word 'all' will change all lights each time. Min: 0, Max: 65535.",
+                    "ignore_off": "If a light in the animation list is off when the animation starts, turn it on. Defaults to True, meaning lights will be ignored if they are off.",
+                    "restore": "When the animation ends, restore lights to their prior state.",
+                    "restore_power": "When the animation ends, turn any lights that were off back to off.",
+                    "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
+                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",                    
+                    "animate_brightness": "Whether or not to animate the brightness. If false, brightness will be set once upon startup.",
+                    "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
+                    "lights": "The lights to include in the animation.",
+                    "color_selector_mode": "IF YOU CHANGE THIS, YOU WILL NEED TO RESELECT ALL OF YOUR COLORS."
+                },
+                "description": "**Updating scene:&nbsp;{scene_name}**"
+            },
+            "color_yaml": {
+                "title": "Animated Scenes",
+                "data": {
+                    "colors": "Colors"
+                },
+                "data_description": {
+                    "colors": "The list of colors. Due to limitations in Home Assistant, you will need to specify this in YAML form. See [Color Configuration Options]({component_color_config_url}) for details."
+                },
+                "description": "See [Color Configuration Options]({component_color_config_url}) for details"
+            },
+            "color_rgb_ui": {
+                "title": "Animated Scenes",
+                "data": {
+                    "color": "Choose the Color",
+                    "brightness": "Brightness",
+                    "nearby_colors": "Use Nearby Colors",
+                    "one_change_per_tick": "One Change per Tick",
+                    "weight": "Color Weight",
+                    "color_add_color": "Add Another Color",
+                    "color_delete_color": "Delete This Color"
+                },
+                "data_description": {
+                    "brightness": "Sets the brightness for this color. Can be a number or a range in the format of '[125, 255]' (means to set this color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
+                    "one_change_per_tick": "If set to true, only the brightness OR color will change at one time.",
+                    "nearby_colors": "If set to a number between 1 and 10, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color. Set to 0 to disable.",
+                    "weight": "The higher the number, the more likely a color is to appear in the animation. Min: 0, Max: 255."
+                },
+                "description": "Select a color to use in the animation.\n\n**Color #{color_count} of {color_max}**"
+            }
+        },
+        "error": {
+            "change_amount_not_int_or_all": "Change Amount: Not an integer or 'all'. Min: 0, Max: 65535",
+            "change_frequency_not_int_or_range": "Change Frequency: Not an integer or range in format '[2,5]'. Min: 0, Max: 60",
+            "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
+            "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
+            "colors_is_blank": "Colors: Cannot be blank or empty",
+            "colors_malformed": "Colors: Invalid format"
+        },
+        "abort": {
+            "activity_sensor_no_options": "&nbsp;\n\nNo Options are available for the Animated Scenes Activity Sensor"
+        }
+    }
+}

@@ -1,43 +1,12 @@
 import asyncio
+import colorsys
 import logging
 from random import choices, randrange, sample, uniform
 from typing import List
-from .const import (
-    CONF_ANIMATE_BRIGHTNESS,
-    CONF_ANIMATE_COLOR,
-    CONF_CHANGE_AMOUNT,
-    CONF_CHANGE_FREQUENCY,
-    CONF_CHANGE_SEQUENCE,
-    CONF_COLOR,
-    CONF_COLOR_TYPE,
-    CONF_COLORS,
-    CONF_IGNORE_OFF,
-    CONF_NEARBY_COLORS,
-    CONF_ONE_CHANGE_PER_TICK,
-    CONF_PRIORITY,
-    CONF_RESTORE,
-    CONF_RESTORE_POWER,
-    CONF_SKIP_RESTORE,
-    CONF_TRANSITION,
-    CONF_WEIGHT,
-    EVENT_NAME_CHANGE,
-    EVENT_STATE_STARTED,
-    EVENT_STATE_STOPPED,
-)
-from homeassistant.const import (
-    CONF_LIGHTS,
-    CONF_NAME,
-    SERVICE_TURN_OFF,
-    SERVICE_TURN_ON,
-)
-from homeassistant.core import HomeAssistant
+
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant.exceptions import IntegrationError
-import colorsys
-
 from homeassistant.components.light import (
-    ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP,
     ATTR_COLOR_TEMP_KELVIN,
@@ -46,21 +15,54 @@ from homeassistant.components.light import (
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
     ATTR_XY_COLOR,
-    DOMAIN as LIGHT_DOMAIN,
-    VALID_TRANSITION,
-    ColorMode,
 )
+from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.components.light import VALID_TRANSITION, ColorMode
+from homeassistant.const import (
+    ATTR_FRIENDLY_NAME,
+    CONF_BRIGHTNESS,
+    CONF_LIGHTS,
+    CONF_NAME,
+    SERVICE_TURN_OFF,
+    SERVICE_TURN_ON,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import IntegrationError
 from homeassistant.helpers.event import async_track_state_change_event
+
+from .const import (
+    CONF_ANIMATE_BRIGHTNESS,
+    CONF_ANIMATE_COLOR,
+    CONF_ANIMATED_SCENE_SWITCH,
+    CONF_CHANGE_AMOUNT,
+    CONF_CHANGE_FREQUENCY,
+    CONF_CHANGE_SEQUENCE,
+    CONF_COLOR,
+    CONF_COLOR_NEARBY_COLORS,
+    CONF_COLOR_ONE_CHANGE_PER_TICK,
+    CONF_COLOR_TYPE,
+    CONF_COLOR_WEIGHT,
+    CONF_COLORS,
+    CONF_IGNORE_OFF,
+    CONF_PRIORITY,
+    CONF_RESTORE,
+    CONF_RESTORE_POWER,
+    CONF_SKIP_RESTORE,
+    CONF_TRANSITION,
+    EVENT_NAME_CHANGE,
+    EVENT_STATE_STARTED,
+    EVENT_STATE_STOPPED,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 COLOR_GROUP_SCHEMA = {
-    vol.Optional(ATTR_BRIGHTNESS, default=255): vol.Any(
+    vol.Optional(CONF_BRIGHTNESS, default=255): vol.Any(
         vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])
     ),
-    vol.Optional(CONF_WEIGHT, default=10): vol.Range(min=0, max=255),
-    vol.Optional(CONF_ONE_CHANGE_PER_TICK, default=False): bool,
-    vol.Optional(CONF_NEARBY_COLORS, default=0): vol.Range(min=0, max=10),
+    vol.Optional(CONF_COLOR_WEIGHT, default=10): vol.Range(min=0, max=255),
+    vol.Optional(CONF_COLOR_ONE_CHANGE_PER_TICK, default=False): bool,
+    vol.Optional(CONF_COLOR_NEARBY_COLORS, default=0): vol.Range(min=0, max=10),
 }
 
 START_SERVICE_CONFIG = {
@@ -68,7 +70,7 @@ START_SERVICE_CONFIG = {
     vol.Optional(CONF_IGNORE_OFF, default=True): bool,
     vol.Optional(CONF_RESTORE, default=True): bool,
     vol.Optional(CONF_RESTORE_POWER, default=True): bool,
-    vol.Optional(ATTR_BRIGHTNESS, default=255): vol.Any(
+    vol.Optional(CONF_BRIGHTNESS, default=255): vol.Any(
         vol.Range(min=0, max=255), vol.All([vol.Range(min=0, max=255)])
     ),
     vol.Optional(CONF_TRANSITION, default=float(1.0)): vol.Any(
@@ -174,7 +176,8 @@ STOP_SERVICE_SCHEMA = vol.Schema(
 ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_LIGHTS): cv.entity_ids,
-        vol.Required(CONF_NAME): cv.string,
+        vol.Optional(CONF_NAME): cv.string,
+        vol.Optional(CONF_ANIMATED_SCENE_SWITCH): cv.entity_id,
     }
 )
 
@@ -200,7 +203,7 @@ class Animation:
         self._active_lights: List[str] = []
         self._animate_brightness: bool = config.get(CONF_ANIMATE_BRIGHTNESS)
         self._animate_color: bool = config.get(CONF_ANIMATE_COLOR)
-        self._global_brightness = config.get(ATTR_BRIGHTNESS)
+        self._global_brightness = config.get(CONF_BRIGHTNESS)
         self._change_amount = config.get(CONF_CHANGE_AMOUNT)
         self._change_frequency = config.get(CONF_CHANGE_FREQUENCY)
         self._colors = config.get(CONF_COLORS)
@@ -280,21 +283,24 @@ class Animation:
             "transition": self.get_transition(),
         }
         if self._animate_color or initial:
-            if CONF_NEARBY_COLORS in color and color[CONF_NEARBY_COLORS] > 0:
+            if (
+                CONF_COLOR_NEARBY_COLORS in color
+                and color[CONF_COLOR_NEARBY_COLORS] > 0
+            ):
                 attributes[color[CONF_COLOR_TYPE]] = self.find_nearby_color(color)
             else:
                 attributes[color[CONF_COLOR_TYPE]] = color[CONF_COLOR]
-        if self._animate_brightness and ATTR_BRIGHTNESS in color:
-            attributes["brightness"] = self.get_static_or_random(color[ATTR_BRIGHTNESS])
+        if self._animate_brightness and CONF_BRIGHTNESS in color:
+            attributes["brightness"] = self.get_static_or_random(color[CONF_BRIGHTNESS])
         elif self._animate_brightness and self._global_brightness is not None:
             attributes["brightness"] = self.get_static_or_random(
                 self._global_brightness
             )
 
-        if ATTR_BRIGHTNESS in color and color[CONF_ONE_CHANGE_PER_TICK]:
+        if CONF_BRIGHTNESS in color and color[CONF_COLOR_ONE_CHANGE_PER_TICK]:
             self._light_status[light] = {
-                "change_one": color[CONF_ONE_CHANGE_PER_TICK],
-                "brightness": color[ATTR_BRIGHTNESS],
+                "change_one": color[CONF_COLOR_ONE_CHANGE_PER_TICK],
+                "brightness": color[CONF_BRIGHTNESS],
             }
 
         return attributes
@@ -305,7 +311,7 @@ class Animation:
             color[CONF_COLOR][1],
             color[CONF_COLOR][2],
         ]
-        modifier = color[CONF_NEARBY_COLORS]
+        modifier = color[CONF_COLOR_NEARBY_COLORS]
         if color[CONF_COLOR_TYPE] not in [
             ATTR_RGB_COLOR,
             ATTR_RGBW_COLOR,
@@ -313,10 +319,10 @@ class Animation:
         ]:
             # _LOGGER.info("Can't find a nearby color for anything except RGB")
             return selected_color
-        h, l, s = colorsys.rgb_to_hls(*selected_color)
-        hmod = uniform(h - (modifier / 100), h + (modifier / 100))
-        lmod = uniform(l - modifier, l + modifier)
-        smod = uniform(s - (modifier / 10), s + (modifier / 10))
+        hue, light, sat = colorsys.rgb_to_hls(*selected_color)
+        hmod = uniform(hue - (modifier / 100), hue + (modifier / 100))
+        lmod = uniform(light - modifier, light + modifier)
+        smod = uniform(sat - (modifier / 10), sat + (modifier / 10))
         r, g, b = map(
             lambda x: 255 if x > 255 else 0 if x < 0 else int(x),
             colorsys.hls_to_rgb(hmod, lmod, smod),
@@ -432,7 +438,7 @@ class Animation:
 class Animations:
     def __init__(self, hass):
         self.animations: dict[str, Animation] = {}
-        self.states: dict[str, State] = {}
+        self.states: dict[str] = {}
         self._external_light_listener = None
         self._light_animations: dict[str, List[Animation]] = {}
         self._light_owner: dict[str, Animation] = {}
@@ -536,8 +542,15 @@ class Animations:
             await self.animations[id].stop()
 
     def refresh_listener(self):
-        if self._external_light_listener != None:
-            self._external_light_listener()
+
+        if self._external_light_listener is not None:
+            try:
+                self._external_light_listener()
+            except ValueError as e:
+                _LOGGER.info(
+                    f"Unable to remove external_light_listener. {e.__class__.__qualname__}: {e}"
+                )
+                pass
             self._external_light_listener = None
         if len(self.states) > 0:
             self._external_light_listener = async_track_state_change_event(
@@ -566,7 +579,7 @@ class Animations:
                 self._light_owner[entity_id]._name,
             )
         if animation._restore and not skip_restore:
-            previous_state: State = self.states[entity_id]
+            previous_state = self.states[entity_id]
             if previous_state.state == "on":
                 await safe_call(
                     self.hass,
@@ -583,7 +596,25 @@ class Animations:
     async def add_lights_to_animation(self, data):
         config = ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA(dict(data))
         lights = config.get(CONF_LIGHTS)
-        name = config.get(CONF_NAME)
+        if (
+            config.get(CONF_NAME, None) is not None
+            and config.get(CONF_ANIMATED_SCENE_SWITCH, None) is not None
+        ) or (
+            config.get(CONF_NAME, None) is None
+            and config.get(CONF_ANIMATED_SCENE_SWITCH, None) is None
+        ):
+            _LOGGER.error(
+                "Animated Scene Name or Animated Scene Switch must be listed but not both"
+            )
+            raise IntegrationError(
+                "Animated Scene Name or Animated Scene Switch must be listed but not both"
+            )
+        if config.get(CONF_NAME, None) is not None:
+            name = config.get(CONF_NAME)
+        else:
+            name = self.hass.states.get(
+                config.get(CONF_ANIMATED_SCENE_SWITCH)
+            ).attributes.get(ATTR_FRIENDLY_NAME, config.get(CONF_ANIMATED_SCENE_SWITCH))
 
         if name not in self.animations:
             _LOGGER.error("Tried to add a light to an animation that doesn't exist")
@@ -628,7 +659,7 @@ class Animations:
 
     def store_state(self, light):
         if light not in self.states:
-            self.states[light]: State = self.hass.states.get(light)
+            self.states[light] = self.hass.states.get(light)
 
     def store_states(self, lights):
         for light in lights:
@@ -639,14 +670,14 @@ class Animations:
         try:
             config = START_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error("Error with received configuration, %s", err.error_message)
-            raise IntegrationError("Service data did not match schema")
+            _LOGGER.exception("Error with received configuration")
+            raise IntegrationError("Service data did not match schema") from err
         return config
 
     def validate_stop(self, data):
         try:
             config = STOP_SERVICE_SCHEMA(dict(data))
         except vol.Invalid as err:
-            _LOGGER.error("Error with received configuration, %s", err.error_message)
-            raise IntegrationError("Service data did not match schema")
+            _LOGGER.exception("Error with received configuration")
+            raise IntegrationError("Service data did not match schema") from err
         return config
