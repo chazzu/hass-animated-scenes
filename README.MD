@@ -29,9 +29,15 @@ I have only tested this with my own system as of now. I do plan on fixing any bu
 
 There are three ways to configure an animation.
 
+- Configure an animation through the config flow in Home Assistant, by going to Settings -> Devices & services -> Animated Scenes -> Add Device
 - Configuring automations which call the 'start_animation' and 'stop_animation' services.
 - Using a blueprint to configure the automation quickly.
-- By configuring a switch in your configuration.yaml.
+
+### Adding an animated scene with new config flow
+
+In order to add an animated scene through the UI, you can go to Settings -> Devices & services -> Animated Scenes -> Add Device.
+
+This will start a config flow with guidance on setting up. Note that the color config takes place on a seperate screen after you submit the first form.
 
 ### Automation Configuration
 
@@ -54,35 +60,6 @@ Now you can set up an automation so that when the toggle is flipped, the animati
 
 For configuring colors, you can choose from the following options, see [Color Configuration](#color-configuration)
 
-
-### Switch Configuration
-
-To add scene switches you want to set up through config.yaml:
-
-```yaml
-switch:
-- platform: animated_scenes
-  name: Red Lights # name of scene
-  restore: False # don't restore lights to previous state after scene, defaults to True
-  restore_power: True # restore each light's on/off state after scene, defaults to False
-  ignore_off: False # if a light in the list is off, turn it on. Defaults to True, meaning lights will be ignored if they are off.
-  transition: [1, 2] # take between 1 and 2 seconds to transition; can also just be a number
-  change_frequency: [2, 5] # change lights every 2 to 5 seconds; can also just be a number
-  change_amount: all # change all lights every time; can also just be a number under 65,535 and under the number of lights in the scene
-  change_sequence: True # instead of choosing a color randomly, choose in sequence
-  animate_brightness: True # defaults to true to change brightness level
-  animate_color: True # defaults to true to change color
-
-  lights: # list of light entities to modify
-  - light.hue_color_lamp_1
-  
-  colors: # See color configuration section for more details
-  - color_type: rgb # use rgb colors
-    color: [255, 0, 0]
-    brightness: 255 # maximum brightness
-    weight: 2 # optional; higher number makes a given color more likely to appear. Default is 10, so you can choose lower numbers to be less frequent
-    one_change_per_tick: False # optional; defaults to false; only change color OR brightness on each tick, don't do both
-```
 
 ### Color Configuration
 
@@ -157,13 +134,6 @@ switch:
 I did this initially to create an animation that mimics the Haunted House animation for Philips Hue but give me greater control. Here is the setting I settled on:
 
 ```yaml
-switch:
-- platform: animated_scenes
-  name: Spooky Scene
-  lights:
-  - be sure to list your light entities here
-
-  colors:
   - color_type: rgb_color
     color: [ 247, 95, 28 ]
     one_change_per_tick: True
@@ -189,15 +159,13 @@ switch:
   - color_type: rgb_color
     color: [ 103, 76, 71 ]
     one_change_per_tick: True
-    
-  transition: [1, 4]
-  change_frequency: 5
-  change_amount: 6
 ```
 
 ## Usage Tips
 
 ### Checking running animations
+
+You can add an activity sensor by going to Settings -> Devices & services -> Animated Scenes -> Add Device and choosing 'Create the Activity Sensor.' 
 
 The Activity sensor is set to the number of currently running animations. The attributes are:
 
@@ -212,7 +180,7 @@ Here is a simple example script which would stop all currently running animation
 alias: Stop All Animations
 sequence:
   - variables:
-      animations: "{{ state_attr('sensor.activity', 'active')|list }}"
+      animations: "{{ state_attr('sensor.animated_scenes_activity_sensor', 'active')|list }}"
   - alias: Repeat for each animation
     repeat:
       for_each: "{{ animations }}"
