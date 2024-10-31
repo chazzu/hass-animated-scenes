@@ -1,6 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 2.0.1
+
+### Fixed
+
+- Upgrade to config flow will fail if you do not have scenes defined in configuration.yaml
+
 ## 2.0.0
 
 ### Changes
