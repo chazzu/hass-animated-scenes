@@ -7,7 +7,7 @@
                 "menu_options": {
                     "activity_sensor": "Create the Activity Sensor",
                     "scene": "Create a New Animated Scene"
-                  }          
+                  }
             },
             "scene": {
                 "title": "Animated Scenes",
@@ -37,7 +37,7 @@
                     "restore": "When the animation ends, restore lights to their prior state.",
                     "restore_power": "When the animation ends, turn any lights that were off back to off.",
                     "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
-                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",                    
+                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
                     "animate_brightness": "Whether or not to animate the brightness. If false, brightness will be set once upon startup.",
                     "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
                     "lights": "The lights to include in the animation."                },
@@ -110,7 +110,7 @@
                     "restore": "When the animation ends, restore lights to their prior state.",
                     "restore_power": "When the animation ends, turn any lights that were off back to off.",
                     "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
-                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",                    
+                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
                     "animate_brightness": "Whether or not to animate the brightness. If false, brightness will be set once upon startup.",
                     "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
                     "lights": "The lights to include in the animation.",
@@ -157,7 +157,8 @@
             "colors_malformed": "Colors: Invalid format"
         },
         "abort": {
-            "activity_sensor_no_options": "&nbsp;\n\nNo Options are available for the Animated Scenes Activity Sensor"
+            "activity_sensor_no_options": "&nbsp;\n\nNo options are available for the Animated Scenes Activity Sensor",
+            "integration_no_options": "&nbsp\n\nNo options are available for the Animated Scenes integration"
         }
     }
 }

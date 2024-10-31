@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Upgrade to config flow will fail if you do not have scenes defined in configuration.yaml
+- Clicking 'Configure' on Animated Scenes leads to error
+- Sometimes logged error on startup
 
 ## 2.0.0
 

@@ -19,6 +19,7 @@ from homeassistant.util import uuid
 
 from .const import (
     ABORT_ACTIVITY_SENSOR_NO_OPTIONS,
+    ABORT_INTEGRATION_NO_OPTIONS,
     BRIGHTNESS_MAX,
     BRIGHTNESS_MIN,
     CHANGE_AMOUNT_MAX,
@@ -705,10 +706,14 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         self.config = config_entry
         self._data = dict(config_entry.data)
         self._errors = {}
-        self._rgb_ui_color_keys = list(self._data.get(CONF_COLOR_RGB_DICT).keys())
-        self._rgb_ui_color_values = list(self._data.get(CONF_COLOR_RGB_DICT).values())
+        rgb_dict = self._data.get(CONF_COLOR_RGB_DICT)
+        if rgb_dict:
+            self._rgb_ui_color_keys = list(self._data.get(CONF_COLOR_RGB_DICT).keys())
+            self._rgb_ui_color_values = list(
+                self._data.get(CONF_COLOR_RGB_DICT).values()
+            )
+            self._rgb_ui_color_max = len(self._rgb_ui_color_keys)
         self._rgb_ui_color_index = 0
-        self._rgb_ui_color_max = len(self._rgb_ui_color_keys)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -716,10 +721,9 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         """Manage the options."""
 
         if self._data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR:
-            _LOGGER.debug(
-                "No Options are available for the Animated Scenes Activity Sensor"
-            )
             return self.async_abort(reason=ABORT_ACTIVITY_SENSOR_NO_OPTIONS)
+        if self._data.get(CONF_ENTITY_TYPE) is None:
+            return self.async_abort(reason=ABORT_INTEGRATION_NO_OPTIONS)
         return await self.async_step_scene(user_input=user_input)
 
     async def async_step_scene(
