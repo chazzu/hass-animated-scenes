@@ -3,8 +3,8 @@ import logging
 from numbers import Number
 from typing import Any
 
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
+
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -14,10 +14,12 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_BRIGHTNESS, CONF_ICON, CONF_LIGHTS, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
+import homeassistant.helpers.config_validation as cv
 from homeassistant.util import uuid
 
 from .const import (
     ABORT_ACTIVITY_SENSOR_NO_OPTIONS,
+    ABORT_INTEGRATION_NO_OPTIONS,
     BRIGHTNESS_MAX,
     BRIGHTNESS_MIN,
     CHANGE_AMOUNT_MAX,
@@ -451,14 +453,12 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
-        # _LOGGER.debug(f"hass data: {self.hass.data[DOMAIN]}")
         activity_sensor_exists = False
-        for entity in self.hass.data[DOMAIN].values():
-            # _LOGGER.debug(f"entity (type: {type(entity)}): {entity}")
-            # _LOGGER.debug(f"Entity: {entity.get(CONF_NAME, None)}, entity_type: {entity.get(CONF_ENTITY_TYPE, None)}")
-            if entity.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR:
-                activity_sensor_exists = True
-                break
+        if DOMAIN in self.hass.data:
+            for entity in self.hass.data[DOMAIN].values():
+                if entity.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR:
+                    activity_sensor_exists = True
+                    break
         if activity_sensor_exists:
             return await self.async_step_scene(user_input=user_input)
         else:
@@ -479,7 +479,6 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_scene(
         self, user_input: dict[str, Any] | None = None, yaml_import: bool = False
     ) -> ConfigFlowResult:
-
         self._errors = {}
 
         # Defaults
@@ -585,7 +584,6 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_color_yaml(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-
         self._errors = {}
 
         # Defaults
@@ -619,7 +617,6 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_color_rgb_ui(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-
         self._errors = {}
 
         # Defaults
@@ -709,10 +706,14 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         self.config = config_entry
         self._data = dict(config_entry.data)
         self._errors = {}
-        self._rgb_ui_color_keys = list(self._data.get(CONF_COLOR_RGB_DICT).keys())
-        self._rgb_ui_color_values = list(self._data.get(CONF_COLOR_RGB_DICT).values())
+        rgb_dict = self._data.get(CONF_COLOR_RGB_DICT)
+        if rgb_dict:
+            self._rgb_ui_color_keys = list(self._data.get(CONF_COLOR_RGB_DICT).keys())
+            self._rgb_ui_color_values = list(
+                self._data.get(CONF_COLOR_RGB_DICT).values()
+            )
+            self._rgb_ui_color_max = len(self._rgb_ui_color_keys)
         self._rgb_ui_color_index = 0
-        self._rgb_ui_color_max = len(self._rgb_ui_color_keys)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -720,10 +721,9 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         """Manage the options."""
 
         if self._data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR:
-            _LOGGER.debug(
-                "No Options are available for the Animated Scenes Activity Sensor"
-            )
             return self.async_abort(reason=ABORT_ACTIVITY_SENSOR_NO_OPTIONS)
+        if self._data.get(CONF_ENTITY_TYPE) is None:
+            return self.async_abort(reason=ABORT_INTEGRATION_NO_OPTIONS)
         return await self.async_step_scene(user_input=user_input)
 
     async def async_step_scene(
@@ -832,7 +832,6 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
     async def async_step_color_yaml(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-
         self._errors = {}
 
         # Defaults
@@ -870,7 +869,6 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
     async def async_step_color_rgb_ui(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-
         self._errors = {}
 
         # Defaults
