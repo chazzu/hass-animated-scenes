@@ -42,6 +42,17 @@ from homeassistant.core import Event, EventStateChangedData, HomeAssistant, Stat
 from homeassistant.exceptions import IntegrationError
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.util.color import (
+    color_hs_to_RGB,
+    color_RGB_to_hs,
+    color_rgb_to_rgbw,
+    color_rgb_to_rgbww,
+    color_RGB_to_xy,
+    color_rgbw_to_rgb,
+    color_rgbww_to_rgb,
+    color_temperature_to_rgb,
+    color_xy_to_RGB,
+)
 
 from .const import (
     ATTR_COLOR_TEMP,
@@ -66,6 +77,8 @@ from .const import (
     EVENT_NAME_CHANGE,
     EVENT_STATE_STARTED,
     EVENT_STATE_STOPPED,
+    MAX_KELVIN,
+    MIN_KELVIN,
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -76,6 +89,7 @@ COLOR_GROUP_SCHEMA = {
     ),
     vol.Optional(CONF_COLOR_WEIGHT, default=10): vol.Range(min=0, max=255),
     vol.Optional(CONF_COLOR_ONE_CHANGE_PER_TICK, default=False): bool,
+    # Nearby-colors modifier: 0 disables, 1-10 controls magnitude of change
     vol.Optional(CONF_COLOR_NEARBY_COLORS, default=0): vol.Range(min=0, max=10),
 }
 
@@ -203,10 +217,10 @@ def _convert_mireds_to_kelvin(mireds: int) -> int:
     if mireds <= 0:
         raise IntegrationError("Mireds must be a positive integer")
     kelvin = int(1000000 / mireds)
-    if kelvin < 1500:
-        kelvin = 1500
-    elif kelvin > 9000:
-        kelvin = 9000
+    if kelvin < MIN_KELVIN:
+        kelvin = MIN_KELVIN
+    elif kelvin > MAX_KELVIN:
+        kelvin = MAX_KELVIN
     return kelvin
 
 
@@ -232,6 +246,38 @@ async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) 
         await hass.services.async_call(domain, service, attr)
     except Exception as e:  # noqa: BLE001
         _LOGGER.warning("Received an error calling service. %s: %s", type(e).__name__, e)
+
+
+def _rgb_to_kelvin(rgb: tuple[int, int, int]) -> int:
+    """Approximate the kelvin color temperature for an RGB triple.
+
+    This finds the kelvin in [MIN_KELVIN, MAX_KELVIN] whose color_temperature_to_rgb
+    result is closest (Euclidean) to the provided RGB. It's not perfect
+    but is sufficient for nearby-color perturbations.
+    """
+    target = tuple(float(c) / 255.0 for c in rgb)
+
+    lo = MIN_KELVIN
+    hi = MAX_KELVIN
+    best_k = lo
+    best_dist = float("inf")
+    # coarse search then refine
+    for k in range(lo, hi + 1, 100):
+        r_f, g_f, b_f = color_temperature_to_rgb(float(k))
+        dist = (r_f - target[0]) ** 2 + (g_f - target[1]) ** 2 + (b_f - target[2]) ** 2
+        if dist < best_dist:
+            best_dist = dist
+            best_k = k
+    # refine around best_k
+    start = max(lo, best_k - 100)
+    end = min(hi, best_k + 100)
+    for k in range(start, end + 1):
+        r_f, g_f, b_f = color_temperature_to_rgb(float(k))
+        dist = (r_f - target[0]) ** 2 + (g_f - target[1]) ** 2 + (b_f - target[2]) ** 2
+        if dist < best_dist:
+            best_dist = dist
+            best_k = k
+    return best_k
 
 
 class Animation:
@@ -430,6 +476,13 @@ class Animation:
         if self._animate_color or initial:
             if CONF_COLOR_NEARBY_COLORS in color and color[CONF_COLOR_NEARBY_COLORS] > 0:
                 attributes[color[CONF_COLOR_TYPE]] = self.find_nearby_color(color)
+                _LOGGER.debug(
+                    "Light %s: picked nearby %s color %s from base %s",
+                    light,
+                    color[CONF_COLOR_TYPE],
+                    attributes[color[CONF_COLOR_TYPE]],
+                    color[CONF_COLOR],
+                )
             else:
                 attributes[color[CONF_COLOR_TYPE]] = color[CONF_COLOR]
         if self._animate_brightness and CONF_BRIGHTNESS in color:
@@ -444,43 +497,231 @@ class Animation:
             }
         return attributes
 
-    def find_nearby_color(self, color: dict[str, Any]) -> list[int]:
-        """Return an RGB color near the configured base color.
+    def _convert_to_rgb(self, color: dict[str, Any]) -> tuple[int, int, int] | None:
+        """Determine a base RGB triple using Home Assistant color helpers.
 
-        The method perturbs the HLS representation of the provided RGB
-        color according to the configured nearby-color modifier and
-        returns a new RGB triple. If the color type is not an RGB
-        variant the original color is returned unchanged.
+        This helper converts the provided `color` configuration mapping into a
+        canonical RGB triple (r, g, b) with integer components in the 0-255
+        range which is suitable for perturbation in HLS space.
 
-        Args:
-            color: The color configuration dict for a color group.
+        Supported input color types (driven by `color[CONF_COLOR_TYPE]`):
+        - ATTR_RGB_COLOR: expects (r, g, b) tuple of bytes.
+        - ATTR_RGBW_COLOR: expects (r, g, b, w); converted via
+          `color_rgbw_to_rgb`.
+        - ATTR_RGBWW_COLOR: expects (r, g, b, cw, ww); converted via
+          `color_rgbww_to_rgb` using `MIN_KELVIN`/`MAX_KELVIN` bounds.
+        - ATTR_COLOR_TEMP_KELVIN: expects an integer kelvin; converted via
+          `color_temperature_to_rgb` and scaled from 0..1 to 0..255.
+        - ATTR_HS_COLOR: expects (h, s) and converted via `color_hs_to_RGB`.
+        - ATTR_XY_COLOR: expects (x, y) and converted via `color_xy_to_RGB`.
 
         Returns:
-            A list of three integers representing an RGB color.
+            A tuple[int, int, int] with values in 0..255 on success, or
+            `None` if conversion fails (invalid/malformed input). The caller
+            should handle `None` (it will typically fall back to returning the
+            original configured color).
 
         """
-        selected_color = [
-            color[CONF_COLOR][0],
-            color[CONF_COLOR][1],
-            color[CONF_COLOR][2],
-        ]
+
+        ctype = color[CONF_COLOR_TYPE]
+        if ctype == ATTR_RGB_COLOR:
+            try:
+                r, g, b = color[CONF_COLOR]
+                return (int(r), int(g), int(b))
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        if ctype == ATTR_RGBW_COLOR:
+            try:
+                r, g, b, w = color[CONF_COLOR]
+                return color_rgbw_to_rgb(r, g, b, w)
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        if ctype == ATTR_RGBWW_COLOR:
+            try:
+                # color[CONF_COLOR] is expected to be (r, g, b, cw, ww)
+                r, g, b, cw, ww = color[CONF_COLOR]
+                # Call with required min/max kelvin bounds.
+                return color_rgbww_to_rgb(r, g, b, cw, ww, MIN_KELVIN, MAX_KELVIN)
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        if ctype == ATTR_COLOR_TEMP_KELVIN:
+            try:
+                kelvin = int(color[CONF_COLOR])
+                # Convert color temperature (kelvin) to an RGB triple
+                r_f, g_f, b_f = color_temperature_to_rgb(float(kelvin))
+                return (
+                    int(min(max(r_f * 255.0, 0), 255)),
+                    int(min(max(g_f * 255.0, 0), 255)),
+                    int(min(max(b_f * 255.0, 0), 255)),
+                )
+            except (TypeError, ValueError):
+                return None
+
+        if ctype == ATTR_HS_COLOR:
+            try:
+                h, s = color[CONF_COLOR]
+                # Home Assistant helper expects HS -> RGB (0..360, 0..100)
+                r, g, b = color_hs_to_RGB(float(h), float(s))
+                return (int(r), int(g), int(b))
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        if ctype == ATTR_XY_COLOR:
+            try:
+                x, y = color[CONF_COLOR]
+                r, g, b = color_xy_to_RGB(float(x), float(y))
+                return (int(r), int(g), int(b))
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        return None
+
+    def _convert_back_to_original_color_type(
+        self, color: dict[str, Any], r: int, g: int, b: int
+    ) -> Any:
+        """Convert an RGB triple back to the original color representation.
+
+        This helper takes the original `color` configuration mapping and an
+        integer RGB triple (r, g, b) produced by perturbation. It returns a
+        value matching the original color type expected by the caller:
+
+        - For `ATTR_RGB_COLOR` returns a list [r, g, b].
+        - For `ATTR_RGBW_COLOR` / `ATTR_RGBWW_COLOR` attempts to convert
+          using Home Assistant helpers and preserves white-channel values
+          from the original config if conversion fails.
+        - For `ATTR_HS_COLOR` and `ATTR_XY_COLOR` returns HS/XY values
+          derived from the RGB triple (rounded for readability).
+        - For `ATTR_COLOR_TEMP_KELVIN` returns an integer kelvin via
+          an approximate inverse search (may be approximate).
+
+        On conversion failure the original configured color (if present)
+        is returned; otherwise an empty list is returned.
+        """
+        ctype = color[CONF_COLOR_TYPE]
+        if ctype == ATTR_RGB_COLOR:
+            return [r, g, b]
+
+        if ctype == ATTR_RGBW_COLOR:
+            try:
+                # color_rgb_to_rgbw expects r,g,b and returns (r,g,b,w)
+                rgbw = color_rgb_to_rgbw(r, g, b)
+                return list(rgbw)
+            except (TypeError, ValueError):
+                # Preserve original white channel if conversion fails
+                try:
+                    whites = list(color[CONF_COLOR][3:4])
+                except (IndexError, TypeError, ValueError):
+                    whites = []
+                return [r, g, b, *whites]
+
+        if ctype == ATTR_RGBWW_COLOR:
+            try:
+                # Call the helper with min/max kelvin bounds
+                rgbww = color_rgb_to_rgbww(r, g, b, MIN_KELVIN, MAX_KELVIN)
+                return list(rgbww)
+            except (TypeError, ValueError):
+                try:
+                    whites = list(color[CONF_COLOR][3:5])
+                except (IndexError, TypeError, ValueError):
+                    whites = []
+                return [r, g, b, *whites]
+
+        if ctype == ATTR_HS_COLOR:
+            try:
+                h, s = color_RGB_to_hs(float(r), float(g), float(b))
+                return [round(h, 1), round(s, 1)]
+            except (IndexError, TypeError, ValueError):
+                return [r, g, b]
+
+        if ctype == ATTR_XY_COLOR:
+            try:
+                x, y = color_RGB_to_xy(int(r), int(g), int(b))
+                return [round(x, 4), round(y, 4)]
+            except (IndexError, TypeError, ValueError):
+                return [r, g, b]
+
+        if ctype == ATTR_COLOR_TEMP_KELVIN:
+            try:
+                kelvin = _rgb_to_kelvin((r, g, b))
+                return int(kelvin)
+            except (IndexError, TypeError, ValueError):
+                return [r, g, b]
+        return color.get(CONF_COLOR) if CONF_COLOR in color else []
+
+    def find_nearby_color(self, color: dict[str, Any]) -> Any:
+        """Return a color near the configured color by applying a small random perturbation.
+
+        The method accepts a color configuration dictionary (as used by the animation
+        configuration) and returns a perturbed color in the same representation as the
+        input. Supported input types include ATTR_RGB_COLOR, ATTR_RGBW_COLOR,
+        ATTR_RGBWW_COLOR, ATTR_COLOR_TEMP_KELVIN, ATTR_HS_COLOR and ATTR_XY_COLOR.
+        For color-temperature and white-capable types the implementation converts to an
+        RGB base, perturbs the color in HLS space, then converts back to the original
+        representation. If the color type is unsupported the original color is returned
+        unchanged.
+
+        Args:
+            color: Mapping containing at least CONF_COLOR and CONF_COLOR_TYPE and
+                   optionally CONF_COLOR_NEARBY_COLORS which controls perturbation amount.
+
+        Returns:
+            A perturbed color in the same format as the provided color (list for RGB/HS/XY,
+            int for color temperature), or the original color if the type is unsupported.
+
+        """
+        # Raw configured color value (may be list/tuple or a single int).
+        raw = color.get(CONF_COLOR) if CONF_COLOR in color else []
+
         modifier = color[CONF_COLOR_NEARBY_COLORS]
-        if color[CONF_COLOR_TYPE] not in {
+        ctype = color[CONF_COLOR_TYPE]
+        if ctype not in {
             ATTR_RGB_COLOR,
             ATTR_RGBW_COLOR,
             ATTR_RGBWW_COLOR,
+            ATTR_COLOR_TEMP_KELVIN,
+            ATTR_HS_COLOR,
+            ATTR_XY_COLOR,
         }:
-            # _LOGGER.info("Can't find a nearby color for anything except RGB")
-            return selected_color
-        hue, light, sat = colorsys.rgb_to_hls(*selected_color)
-        hmod = uniform(hue - (modifier / 100), hue + (modifier / 100))
-        lmod = uniform(light - modifier, light + modifier)
-        smod = uniform(sat - (modifier / 10), sat + (modifier / 10))
-        r, g, b = (
-            255 if x > 255 else 0 if x < 0 else int(x)
-            for x in colorsys.hls_to_rgb(hmod, lmod, smod)
-        )
-        return [r, g, b]
+            # Unsupported color types: return the configured color as-is
+            return raw if raw else []
+
+        base_rgb = self._convert_to_rgb(color=color)
+
+        if base_rgb is None:
+            return raw if raw else []
+
+        # colorsys expects RGB values in the 0..1 range. Our stored
+        # colors are bytes (0..255), so normalize first.
+        r_n, g_n, b_n = (c / 255.0 for c in base_rgb)
+        hue, light, sat = colorsys.rgb_to_hls(r_n, g_n, b_n)
+
+        # Scale the modifier to a 0..1 range. The configured `modifier`
+        # is a small integer (1-10); dividing by 100 produces a
+        # reasonable perturbation amount for H/L/S channels.
+        delta = modifier / 100.0
+        hmod = uniform(hue - delta, hue + delta)
+        lmod = uniform(light - delta, light + delta)
+        smod = uniform(sat - delta, sat + delta)
+
+        # Clamp perturbed H/L/S into valid 0..1 ranges before converting
+        # back to RGB to avoid surprising results.
+        # Hue is cyclic; wrap-around using modulo so small perturbations near
+        # the 0/1 boundary remain adjacent rather than being clamped far away.
+        hmod = hmod % 1.0
+        lmod = min(max(lmod, 0.0), 1.0)
+        smod = min(max(smod, 0.0), 1.0)
+
+        # Convert back to RGB (0..1), scale to 0..255 and clamp to byte
+        # range, returning integers.
+        r_f, g_f, b_f = colorsys.hls_to_rgb(hmod, lmod, smod)
+        r = int(min(max(r_f * 255.0, 0), 255))
+        g = int(min(max(g_f * 255.0, 0), 255))
+        b = int(min(max(b_f * 255.0, 0), 255))
+
+        return self._convert_back_to_original_color_type(color=color, r=r, g=g, b=b)
 
     def get_active_lights(self) -> list[str]:
         """Return the list of active lights for this animation."""

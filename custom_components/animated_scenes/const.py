@@ -87,3 +87,6 @@ ABORT_INTEGRATION_NO_OPTIONS = "integration_no_options"
 EVENT_NAME_CHANGE = "animated_scenes_change"
 EVENT_STATE_STARTED = "started"
 EVENT_STATE_STOPPED = "stopped"
+
+MIN_KELVIN = 1500
+MAX_KELVIN = 9000

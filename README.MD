@@ -1,5 +1,13 @@
 # Animated Scenes
 
+[![GitHub Downloads][downloads-shield]][releases]
+[![GitHub Latest Downloads][downloads-latest-shield]][releases]
+[![GitHub Release][releases-shield]][releases]
+[![GitHub Release Date][release-date-shield]][releases]
+[![GitHub Activity][commits-shield]][commits]
+[![License][license-shield]](LICENSE)
+[![hacs][hacsbadge]][hacs]
+
 A custom component for [Home Assistant](https://www.home-assistant.io/) to create neat animated light scenes. These aren't really "scenes" in the sense of Home Assistant scenes, but rather switches to turn on/off to start and end an animation.
 
 Features include:
@@ -71,7 +79,7 @@ For configuring colors, you can choose from the following options, see [Color Co
   weight: 10 # The higher the number, the more likely a color is to appear in the animation.
   brightness: [0, 255] # Sets a minimum and maximum brightness for this color group; can also just be a single number
   one_change_per_tick: true # If set to true, only the brightness OR color will change at one time
-  nearby_colors: 0 # If set to a number between 1 and 100, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color. This will only work for RGB, RGBW, and RGBWW
+  nearby_colors: 0 # If set to a number between 1 and 10, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color
 ```
 
 #### For RGB lights
@@ -239,4 +247,13 @@ data:
   name: Animation ID
 ```
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[commits-shield]: https://img.shields.io/github/last-commit/chazzu/hass-animated-scenes?style=for-the-badge
+[commits]: https://github.com/chazzu/hass-animated-scenes/commits/main
+[hacs]: https://hacs.xyz
+[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
+[license-shield]: https://img.shields.io/github/license/chazzu/hass-animated-scenes.svg?style=for-the-badge
+[downloads-latest-shield]: https://img.shields.io/github/downloads-pre/chazzu/hass-animated-scenes/latest/total?style=for-the-badge
+[downloads-shield]: https://img.shields.io/github/downloads/chazzu/hass-animated-scenes/total?style=for-the-badge&label=total%20downloads
+[release-date-shield]: https://img.shields.io/github/release-date/chazzu/hass-animated-scenes?display_date=published_at&style=for-the-badge
+[releases-shield]: https://img.shields.io/github/v/release/chazzu/hass-animated-scenes?style=for-the-badge
+[releases]: https://github.com/chazzu/hass-animated-scenes/releases
