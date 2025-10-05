@@ -5,6 +5,8 @@ DOMAIN = "animated_scenes"
 VERSION = "2.0.1"
 COMPONENT_COLOR_CONFIG_URL = "https://github.com/chazzu/hass-animated-scenes#color-configuration"
 
+ATTR_COLOR_TEMP = "color_temp"  # Deprecated by HASS, will auto-convert to ATTR_COLOR_TEMP_KELVIN
+
 CONF_EXTERNAL_SWITCHES = "external_switches"
 
 CONF_ANIMATE_BRIGHTNESS = "animate_brightness"
@@ -14,9 +16,6 @@ CONF_CHANGE_FREQUENCY = "change_frequency"
 CONF_CHANGE_SEQUENCE = "change_sequence"
 CONF_COLORS = "colors"
 CONF_COLOR = "color"
-CONF_COLOR_TEMP = "color_temp"
-CONF_COLOR_HS = "hs_color"
-CONF_COLOR_XY = "xy_color"
 CONF_COLOR_TYPE = "color_type"
 CONF_IGNORE_OFF = "ignore_off"
 CONF_PLATFORM = "platform"
