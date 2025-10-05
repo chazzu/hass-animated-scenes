@@ -13,7 +13,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
-from homeassistant.const import CONF_BRIGHTNESS, CONF_ICON, CONF_LIGHTS, CONF_NAME
+from homeassistant.const import CONF_BRIGHTNESS, CONF_ICON, CONF_LIGHTS, CONF_NAME, Platform
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 import homeassistant.helpers.config_validation as cv
@@ -76,6 +76,7 @@ from .const import (
     ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE,
     ERROR_COLORS_IS_BLANK,
     ERROR_COLORS_MALFORMED,
+    ERROR_MUST_SELECT_LIGHTS,
     ERROR_TRANSITION_NOT_INT_OR_RANGE,
     TRANSITION_MAX,
     TRANSITION_MIN,
@@ -285,7 +286,7 @@ async def _async_build_schema(
                 ): selector.IconSelector(selector.IconSelectorConfig()),
             }
         )
-    return build_schema.extend(
+    build_schema = build_schema.extend(
         {
             vol.Optional(
                 CONF_PRIORITY, default=_get_default(CONF_PRIORITY, DEFAULT_PRIORITY)
@@ -339,11 +340,18 @@ async def _async_build_schema(
                 CONF_RESTORE_POWER,
                 default=_get_default(CONF_RESTORE_POWER, DEFAULT_RESTORE_POWER),
             ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
-            vol.Required(CONF_LIGHTS, default=_get_default(CONF_LIGHTS)): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="light", multiple=True),
-            ),
             vol.Required(
-                CONF_COLOR_SELECTOR_MODE, default=_get_default(CONF_COLOR_SELECTOR_MODE)
+                CONF_LIGHTS, default=_get_default(CONF_LIGHTS, [])
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=[Platform.LIGHT], multiple=True),
+            ),
+        }
+    )
+
+    return build_schema.extend(
+        {
+            vol.Required(
+                CONF_COLOR_SELECTOR_MODE, default=_get_default(CONF_COLOR_SELECTOR_MODE, "")
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=COLOR_SELECTOR_OPTION_LIST,
@@ -475,7 +483,6 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._data[CONF_COLOR_RGB_DICT] = {}
         self._data[CONF_COLORS] = {}
-        self._errors: dict[str, Any] = {}
         self._entry = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -513,7 +520,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         configuration steps or creating the config entry.
         """
 
-        self._errors = {}
+        errors: dict[str, Any] = {}
 
         # Defaults
         defaults = {
@@ -539,6 +546,8 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._data.get(CONF_CHANGE_AMOUNT),
                 type(self._data.get(CONF_CHANGE_AMOUNT)),
             )
+            if len(self._data.get(CONF_LIGHTS, [])) == 0:
+                errors["base"] = ERROR_MUST_SELECT_LIGHTS
             change_amount_check, change_amount_value = _is_int_list_or_all(
                 self._data.get(CONF_CHANGE_AMOUNT),
                 CHANGE_AMOUNT_MIN,
@@ -547,7 +556,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             if change_amount_check:
                 self._data.update({CONF_CHANGE_AMOUNT: change_amount_value})
             else:
-                self._errors["base"] = ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL
+                errors["base"] = ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL
             _LOGGER.debug(
                 "Checking Transition: %s, type: %s",
                 self._data.get(CONF_TRANSITION),
@@ -561,7 +570,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             if transition_check:
                 self._data.update({CONF_TRANSITION: transition_value})
             else:
-                self._errors["base"] = ERROR_TRANSITION_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_TRANSITION_NOT_INT_OR_RANGE
             _LOGGER.debug(
                 "Checking Change Frequency: %s, type: %s",
                 self._data.get(CONF_CHANGE_FREQUENCY),
@@ -575,7 +584,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             if change_frequency_check:
                 self._data.update({CONF_CHANGE_FREQUENCY: change_frequency_value})
             else:
-                self._errors["base"] = ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE
             _LOGGER.debug(
                 "Checking Brightness: %s, type: %s",
                 self._data.get(CONF_BRIGHTNESS),
@@ -589,7 +598,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             if brightness_check:
                 self._data.update({CONF_BRIGHTNESS: brightness_value})
             else:
-                self._errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
             self._data.update(
                 {CONF_PRIORITY: round(self._data.get(CONF_PRIORITY, DEFAULT_PRIORITY))}
             )
@@ -604,7 +613,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
             # _LOGGER.debug(f"[async_step_scene] self._data: {self._data}")
-            if not self._errors:
+            if not errors:
                 if yaml_import:
                     self._data.update({CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_YAML})
                     return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
@@ -618,14 +627,14 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="scene",
             data_schema=await _async_build_schema(user_input, defaults),
-            errors=self._errors,
+            errors=errors,
         )
 
     async def async_step_color_yaml(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle color configuration when the user chooses YAML input."""
-        self._errors = {}
+        errors: dict[str, Any] = {}
 
         # Defaults
         defaults: dict[str, Any] = {}
@@ -633,18 +642,18 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._data.update(user_input)
             if self._data.get(CONF_COLORS) is None or self._data.get(CONF_COLORS) == {}:
-                self._errors["base"] = ERROR_COLORS_IS_BLANK
+                errors["base"] = ERROR_COLORS_IS_BLANK
             if not isinstance(self._data.get(CONF_COLORS), list):
-                self._errors["base"] = ERROR_COLORS_MALFORMED
+                errors["base"] = ERROR_COLORS_MALFORMED
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
             # _LOGGER.debug(f"[async_step_color_yaml] self._data: {self._data}")
-            if not self._errors:
+            if not errors:
                 return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
         return self.async_show_form(
             step_id="color_yaml",
             data_schema=await _async_build_color_yaml_schema(user_input, defaults),
-            errors=self._errors,
+            errors=errors,
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
             },
@@ -654,7 +663,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle color configuration when the user uses the RGB UI selectors."""
-        self._errors = {}
+        errors: dict[str, Any] = {}
 
         # Defaults
         defaults = {
@@ -680,7 +689,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             if brightness_check:
                 user_input.update({CONF_BRIGHTNESS: brightness_value})
             else:
-                self._errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
             user_input.update(
                 {CONF_COLOR_WEIGHT: round(user_input.get(CONF_COLOR_WEIGHT, DEFAULT_COLOR_WEIGHT))}
             )
@@ -693,7 +702,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             for k, v in defaults.items():
                 user_input.setdefault(k, v)
-            if not self._errors:
+            if not errors:
                 color_uuid = uuid.random_uuid_hex()
                 self._data.get(CONF_COLOR_RGB_DICT, {}).update({color_uuid: user_input})
                 # _LOGGER.debug(f"[async_step_color_rgb_ui] self._data: {self._data}")
@@ -712,7 +721,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="color_rgb_ui",
             data_schema=await _async_build_color_rgb_ui_schema(user_input, defaults),
-            errors=self._errors,
+            errors=errors,
             description_placeholders={
                 "color_count": str(len(self._data.get(CONF_COLOR_RGB_DICT, {})) + 1),
             },
@@ -741,7 +750,6 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         """Initialize."""
         self.config = config_entry
         self._data = dict(config_entry.data)
-        self._errors: dict[str, Any] = {}
         rgb_dict = self._data.get(CONF_COLOR_RGB_DICT)
         if rgb_dict:
             self._rgb_ui_color_keys = list(self._data.get(CONF_COLOR_RGB_DICT, {}).keys())
@@ -765,7 +773,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         color configuration steps or update the entry data.
         """
 
-        self._errors = {}
+        errors: dict[str, Any] = {}
 
         # Defaults
         defaults = {
@@ -791,6 +799,8 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                 self._data.get(CONF_CHANGE_AMOUNT),
                 type(self._data.get(CONF_CHANGE_AMOUNT)),
             )
+            if len(self._data.get(CONF_LIGHTS, [])) == 0:
+                errors["base"] = ERROR_MUST_SELECT_LIGHTS
             change_amount_check, change_amount_value = _is_int_list_or_all(
                 self._data.get(CONF_CHANGE_AMOUNT),
                 CHANGE_AMOUNT_MIN,
@@ -799,7 +809,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             if change_amount_check:
                 self._data.update({CONF_CHANGE_AMOUNT: change_amount_value})
             else:
-                self._errors["base"] = ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL
+                errors["base"] = ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL
             _LOGGER.debug(
                 "Checking Transition: %s, type: %s",
                 self._data.get(CONF_TRANSITION),
@@ -813,7 +823,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             if transition_check:
                 self._data.update({CONF_TRANSITION: transition_value})
             else:
-                self._errors["base"] = ERROR_TRANSITION_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_TRANSITION_NOT_INT_OR_RANGE
             _LOGGER.debug(
                 "Checking Change Frequency: %s, type: %s",
                 self._data.get(CONF_CHANGE_FREQUENCY),
@@ -827,7 +837,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             if change_frequency_check:
                 self._data.update({CONF_CHANGE_FREQUENCY: change_frequency_value})
             else:
-                self._errors["base"] = ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE
             _LOGGER.debug(
                 "Checking Brightness: %s, type: %s",
                 self._data.get(CONF_BRIGHTNESS),
@@ -841,7 +851,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             if brightness_check:
                 self._data.update({CONF_BRIGHTNESS: brightness_value})
             else:
-                self._errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
             self._data.update(
                 {CONF_PRIORITY: round(self._data.get(CONF_PRIORITY, DEFAULT_PRIORITY))}
             )
@@ -856,7 +866,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
             # _LOGGER.debug(f"[async_init_user] self._data: {self._data}")
-            if not self._errors:
+            if not errors:
                 if (
                     self._data.get(CONF_COLOR_SELECTOR_MODE, COLOR_SELECTOR_RGB_UI)
                     == COLOR_SELECTOR_RGB_UI
@@ -867,7 +877,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         return self.async_show_form(
             step_id="scene",
             data_schema=await _async_build_schema(user_input, self._data, options_flow=True),
-            errors=self._errors,
+            errors=errors,
             description_placeholders={"scene_name": self._data[CONF_NAME]},
         )
 
@@ -875,7 +885,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle color configuration in YAML mode within the options flow."""
-        self._errors = {}
+        errors: dict[str, Any] = {}
 
         # Defaults
         defaults: dict[str, Any] = {}
@@ -883,13 +893,13 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         if user_input is not None:
             self._data.update(user_input)
             if self._data.get(CONF_COLORS) is None or self._data.get(CONF_COLORS) == {}:
-                self._errors["base"] = ERROR_COLORS_IS_BLANK
+                errors["base"] = ERROR_COLORS_IS_BLANK
             if not isinstance(self._data.get(CONF_COLORS), list):
-                self._errors["base"] = ERROR_COLORS_MALFORMED
+                errors["base"] = ERROR_COLORS_MALFORMED
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
             # _LOGGER.debug(f"[async_step_color_yaml] self._data: {self._data}")
-            if not self._errors:
+            if not errors:
                 self._data.update({CONF_COLOR_RGB_DICT: {}})
                 self.hass.config_entries.async_update_entry(
                     self.config, data=self._data, options=self.config.options
@@ -900,7 +910,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         return self.async_show_form(
             step_id="color_yaml",
             data_schema=await _async_build_color_yaml_schema(user_input, self._data),
-            errors=self._errors,
+            errors=errors,
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
             },
@@ -910,7 +920,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle color configuration using the RGB UI selectors in options."""
-        self._errors = {}
+        errors: dict[str, Any] = {}
 
         # Defaults
         defaults = {
@@ -941,14 +951,14 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             if brightness_check:
                 color_data.update({CONF_BRIGHTNESS: brightness_value})
             else:
-                self._errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
+                errors["base"] = ERROR_BRIGHTNESS_NOT_INT_OR_RANGE
             color_data.update({CONF_COLOR_WEIGHT: round(color_data.get(CONF_COLOR_WEIGHT))})
             color_data.update(
                 {CONF_COLOR_NEARBY_COLORS: round(color_data.get(CONF_COLOR_NEARBY_COLORS))}
             )
             for k, v in defaults.items():
                 color_data.setdefault(k, v)
-            if not self._errors:
+            if not errors:
                 if self._rgb_ui_color_index + 1 <= self._rgb_ui_color_max:
                     self._data.get(CONF_COLOR_RGB_DICT, {}).update(
                         {self._rgb_ui_color_keys[self._rgb_ui_color_index]: color_data}
@@ -987,7 +997,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                 options_flow=True,
                 is_last_color=(self._rgb_ui_color_index + 1 >= self._rgb_ui_color_max),
             ),
-            errors=self._errors,
+            errors=errors,
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
                 "color_count": str(self._rgb_ui_color_index + 1),
