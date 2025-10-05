@@ -20,7 +20,6 @@ import voluptuous as vol
 
 from homeassistant.components.light import (
     ATTR_COLOR_MODE,
-    ATTR_COLOR_TEMP,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
     ATTR_RGB_COLOR,
@@ -45,6 +44,7 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
+    ATTR_COLOR_TEMP,
     CONF_ANIMATE_BRIGHTNESS,
     CONF_ANIMATE_COLOR,
     CONF_ANIMATED_SCENE_SWITCH,
@@ -198,6 +198,18 @@ REMOVE_LIGHTS_SERVICE_SCHEMA = vol.Schema(
 )
 
 
+def _convert_mireds_to_kelvin(mireds: int) -> int:
+    """Convert mireds to kelvin, ensuring the result is within valid bounds."""
+    if mireds <= 0:
+        raise IntegrationError("Mireds must be a positive integer")
+    kelvin = int(1000000 / mireds)
+    if kelvin < 1500:
+        kelvin = 1500
+    elif kelvin > 9000:
+        kelvin = 9000
+    return kelvin
+
+
 async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) -> None:
     """Call a Home Assistant service safely, logging exceptions.
 
@@ -249,7 +261,7 @@ class Animation:
         self._global_brightness: int | list[int] = config[CONF_BRIGHTNESS]
         self._change_amount: int | list[int] | str = config[CONF_CHANGE_AMOUNT]
         self._change_frequency: int | list[int] = config[CONF_CHANGE_FREQUENCY]
-        self._colors: dict[int, Any] = config[CONF_COLORS]
+        self._colors: list[dict[str, Any]] = config[CONF_COLORS]
         self._current_color_index: int = 0
         self._hass: HomeAssistant = hass
         self._ignore_off: bool = config[CONF_IGNORE_OFF]
@@ -262,6 +274,8 @@ class Animation:
         self._task: Task | None = None
         self._transition: int | list[int] = config[CONF_TRANSITION]
         self._weights: list = []
+
+        self._change_mired_colors_to_kelvin()
 
         for color in self._colors:
             if "weight" in color:
@@ -293,6 +307,25 @@ class Animation:
     def restore_power(self) -> bool:
         """Whether this animation should restore power (turn off) states."""
         return self._restore_power
+
+    def _change_mired_colors_to_kelvin(self) -> None:
+        """Convert any colors in mireds to kelvin in place."""
+        for color in self._colors[:]:
+            if color[CONF_COLOR_TYPE] == ATTR_COLOR_TEMP:
+                try:
+                    kelvin = _convert_mireds_to_kelvin(color[CONF_COLOR])
+                    _LOGGER.debug(
+                        "Converted color temp %d mireds to %d kelvin", color[CONF_COLOR], kelvin
+                    )
+                    color[CONF_COLOR] = kelvin
+                    color[CONF_COLOR_TYPE] = ATTR_COLOR_TEMP_KELVIN
+                except IntegrationError as e:
+                    _LOGGER.warning(
+                        "Skipping invalid color temp %d mireds: %s",
+                        color[CONF_COLOR],
+                        e,
+                    )
+                    self._colors.remove(color)
 
     def add_light(self, entity_id: str) -> None:
         """Add a single light to this animation's active list.
@@ -386,7 +419,7 @@ class Animation:
                 }
 
         if self._sequence:
-            color = self._colors[self._current_color_index]
+            color: dict[str, Any] = self._colors[self._current_color_index]
         else:
             color = self.pick_color()
 
@@ -409,7 +442,6 @@ class Animation:
                 "change_one": color[CONF_COLOR_ONE_CHANGE_PER_TICK],
                 "brightness": color[CONF_BRIGHTNESS],
             }
-
         return attributes
 
     def find_nearby_color(self, color: dict[str, Any]) -> list[int]:
@@ -497,7 +529,7 @@ class Animation:
             return randrange(value[0], value[1], step)
         return value
 
-    def pick_color(self) -> list[int]:
+    def pick_color(self) -> dict[str, Any]:
         """Pick a color group according to configured weights."""
         color: list = choices(self._colors, self._weights, k=1)
         return color.pop()
@@ -681,7 +713,6 @@ class Animations:
                 if value:
                     attributes[attr] = value
                     break
-
         return attributes
 
     def external_light_change(self, event: Event[EventStateChangedData]) -> Any:

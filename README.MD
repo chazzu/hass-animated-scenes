@@ -125,14 +125,6 @@ For configuring colors, you can choose from the following options, see [Color Co
     - 75.0 # Saturation value
 ```
 
-#### For Color Temp lights
-
-```yaml
-- color_type: color_temp
-  color:
-    - 450 # Color temperature in mireds
-```
-
 #### For Color Temp in Kelvin lights
 
 ```yaml
@@ -231,7 +223,7 @@ sequence:
         - light.living_room_1
         - light.living_room_2
     data:
-      kelvin: 2800
+      color_temp_kelvin: 2800
       brightness_pct: 100
 ```
 
