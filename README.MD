@@ -1,7 +1,9 @@
 # Animated Scenes
+
 A custom component for [Home Assistant](https://www.home-assistant.io/) to create neat animated light scenes. These aren't really "scenes" in the sense of Home Assistant scenes, but rather switches to turn on/off to start and end an animation.
 
 Features include:
+
 - Remember the state of the lights before animation started, and restore lights to prior state after animation is turned off.
 - Automatically disable other scenes when activating another scene.
 - Add additional switches to turn off (such as a Flux or Circadian Light switch) when an animation starts.
@@ -9,15 +11,18 @@ Features include:
 - If you turn a light off during an animation, it won't turn it back on. If you turn one on, it will add it to the animation automatically.
 
 ## Disclaimer
+
 I have only tested this with my own system as of now. I do plan on fixing any bugs identified by others, and would like to hear feedback though.
 
 ## HACS Installation
+
 - Add the following custom repository to HACS: `https://github.com/chazzu/hass-animated-scenes.git`
 - Reload Home Assistant
 - In Home Assistant, go to Settings -> Devices & Services. Click Add Integration
 - Select the "Animated Scenes" integration.
 
 ## Manual Installation
+
 - Clone this repository: `git clone https://github.com/chazzu/hass-animated-scenes.git`
 - If you have not already done so, create a 'custom_components' folder inside the 'config' folder in your Home Assistant installation.
 - Create an 'animated_scenes' folder inside your custom_components folder.
@@ -25,7 +30,7 @@ I have only tested this with my own system as of now. I do plan on fixing any bu
 - In Home Assistant, go to Settings -> Devices & Services. Click Add Integration
 - Select the "Animated Scenes" integration.
 
-## Configuration 
+## Configuration
 
 There are three ways to configure an animation.
 
@@ -37,13 +42,13 @@ There are three ways to configure an animation.
 
 In order to add an animated scene through the UI, you can go to Settings -> Devices & services -> Animated Scenes -> Add Device.
 
-This will start a config flow with guidance on setting up. Note that the color config takes place on a seperate screen after you submit the first form.
+This will start a config flow with guidance on setting up. Note that the color config takes place on a separate screen after you submit the first form.
 
 ### Automation Configuration
 
 First, I would recommend setting up a toggle helper.
 
-- Go to Settings -> Devices & Services. 
+- Go to Settings -> Devices & Services.
 - Click Helpers in the top bar.
 - Choose Create Helper at the bottom right.
 - Select Toggle as your Helper type.
@@ -60,7 +65,6 @@ Now you can set up an automation so that when the toggle is flipped, the animati
 
 For configuring colors, you can choose from the following options, see [Color Configuration](#color-configuration)
 
-
 ### Color Configuration
 
 ```yaml
@@ -70,16 +74,18 @@ For configuring colors, you can choose from the following options, see [Color Co
   nearby_colors: 0 # If set to a number between 1 and 100, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color. This will only work for RGB, RGBW, and RGBWW
 ```
 
-*For RGB lights*
+#### For RGB lights
+
 ```yaml
 - color_type: rgb_color
   color:
     - 255 # Red value
     - 0 # Green value
     - 0 # Blue value
-``` 
+```
 
-*For RGBW lights*
+#### For RGBW lights
+
 ```yaml
 - color_type: rgbw_color
   color:
@@ -87,9 +93,10 @@ For configuring colors, you can choose from the following options, see [Color Co
     - 0 # Green value
     - 0 # Blue value
     - 0 # Cold white
-``` 
+```
 
-*For RGBWW lights*
+#### For RGBWW lights
+
 ```yaml
 - color_type: rgbww_color
   color:
@@ -98,39 +105,44 @@ For configuring colors, you can choose from the following options, see [Color Co
     - 0 # Blue value
     - 0 # Cold white
     - 0 # Warm white
-``` 
+```
 
-*For XY lights*
+#### For XY lights
+
 ```yaml
 - color_type: xy_color
   color:
     - 0.3127 # X value
     - 0.3291 # Y value
-``` 
+```
 
-*For HS lights*
+#### For HS lights
+
 ```yaml
 - color_type: hs_color
   color:
     - 200.0 # Hue value
     - 75.0 # Saturation value
-``` 
+```
 
-*For Color Temp lights*
+#### For Color Temp lights
+
 ```yaml
 - color_type: color_temp
   color:
     - 450 # Color temperature in mireds
-``` 
+```
 
-*For Color Temp in Kelvin lights*
+#### For Color Temp in Kelvin lights
+
 ```yaml
 - color_type: color_temp_kelvin
   color:
-    - 450 # Color temperature in mireds
-``` 
+    - 4500 # Color temperature in Kelvin
+```
 
 ### Sample Configurations
+
 I did this initially to create an animation that mimics the Haunted House animation for Philips Hue but give me greater control. Here is the setting I settled on:
 
 ```yaml
@@ -165,7 +177,7 @@ I did this initially to create an animation that mimics the Haunted House animat
 
 ### Checking running animations
 
-You can add an activity sensor by going to Settings -> Devices & services -> Animated Scenes -> Add Device and choosing 'Create the Activity Sensor.' 
+You can add an activity sensor by going to Settings -> Devices & services -> Animated Scenes -> Add Device and choosing 'Create the Activity Sensor.'
 
 The Activity sensor is set to the number of currently running animations. The attributes are:
 
@@ -196,7 +208,7 @@ mode: single
 
 A common use case that I ran into is wanting to animate the whole house for fun. However, we should be able to easily remove lights from an animation in order to control them manually. You can do this using the `remove_lights` service.
 
-If the animation specifies 'restore_lights' then normally it would set the lights back the state they were in. However, we may not want that to happen. For example, if an animation is running in a room and you hit the light switch to on, you may want the lights to just go to their normal color and brightness and not first get restored back to 'off' first. 
+If the animation specifies 'restore_lights' then normally it would set the lights back the state they were in. However, we may not want that to happen. For example, if an animation is running in a room and you hit the light switch to on, you may want the lights to just go to their normal color and brightness and not first get restored back to 'off' first.
 
 ```yaml
 alias: Remove Living Room Lights
