@@ -13,6 +13,7 @@ from asyncio import Task
 from collections.abc import Callable
 import colorsys
 import logging
+import math
 from random import choices, randrange, sample, uniform
 from typing import Any
 
@@ -525,8 +526,16 @@ class Animation:
         """
         if isinstance(value, list):
             if isinstance(value[0], float) or isinstance(value[1], float):
-                return round(uniform(value[0], value[1]), 1)
-            return randrange(value[0], value[1], step)
+                # Use math.nextafter to nudge the upper bound slightly upward so
+                # that after rounding the result can inclusively reach the
+                # configured upper value. This makes the behavior effectively
+                # inclusive for the rounded one-decimal result.
+                upper = math.nextafter(value[1], math.inf)
+                return round(uniform(value[0], upper), 1)
+            # randrange's stop is exclusive. Add `step` to the stop value so
+            # the configured upper bound can be selected when it aligns with
+            # the step. This makes the integer range behave inclusively.
+            return randrange(value[0], value[1] + step, step)
         return value
 
     def pick_color(self) -> dict[str, Any]:
