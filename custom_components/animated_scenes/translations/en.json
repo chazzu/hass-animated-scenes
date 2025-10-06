@@ -79,7 +79,8 @@
             "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
             "colors_is_blank": "Colors: Cannot be blank or empty",
-            "colors_malformed": "Colors: Invalid format"
+            "colors_malformed": "Colors: Invalid format",
+            "must_select_lights": "You must select at least one light for the animation"
         }
     },
     "options": {
@@ -154,7 +155,8 @@
             "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
             "colors_is_blank": "Colors: Cannot be blank or empty",
-            "colors_malformed": "Colors: Invalid format"
+            "colors_malformed": "Colors: Invalid format",
+            "must_select_lights": "You must select at least one light for the animation"
         },
         "abort": {
             "activity_sensor_no_options": "&nbsp;\n\nNo options are available for the Animated Scenes Activity Sensor",
