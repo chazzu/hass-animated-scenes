@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2.1.0
+
+### Fixed
+
+- Numerous fixes from [Snuffy2](https://github.com/Snuffy2)
+  - Fixed deprecated ATTR_COLOR_TEMP
+  - Verifies that a light is selected during configuration
+  - Updates schema to filter on LIGHT platform
+  - Fix random range selection
+  - More compatibility with nearby color feature
+
 ## 2.0.1
 
 ### Fixed
