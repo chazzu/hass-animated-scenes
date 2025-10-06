@@ -345,11 +345,7 @@ class Animation:
         if state is None:
             _LOGGER.warning("Entity %s not found, skipping", entity_id)
             return
-        if (
-            state.state != "off"
-            and entity_id not in self._active_lights
-            or (state.state == "off" and self._ignore_off and entity_id not in self._active_lights)
-        ):
+        if entity_id not in self._active_lights and (state.state != "off" or not self._ignore_off):
             self._active_lights.append(entity_id)
 
     def add_lights(self, ids: list) -> None:
