@@ -437,6 +437,10 @@ class Animation:
             attributes["brightness"] = self.get_static_or_random(color[CONF_BRIGHTNESS])
         elif self._animate_brightness and self._global_brightness is not None:
             attributes["brightness"] = self.get_static_or_random(self._global_brightness)
+        elif isinstance(self._global_brightness, int):
+            attributes["brightness"] = self._global_brightness
+        elif isinstance(self._global_brightness, list):
+            _LOGGER.warning("Global brightness is a list but animate_brightness is False, ignoring")
 
         if CONF_BRIGHTNESS in color and color[CONF_COLOR_ONE_CHANGE_PER_TICK]:
             self._light_status[light] = {
