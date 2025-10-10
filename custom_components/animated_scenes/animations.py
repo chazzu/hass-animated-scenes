@@ -391,7 +391,7 @@ class Animation:
         if state is None:
             _LOGGER.warning("Entity %s not found, skipping", entity_id)
             return
-        if entity_id not in self._active_lights and (state.state != "off" or not self._ignore_off):
+        if entity_id not in self._active_lights and (state.state != "off" or self._ignore_off):
             self._active_lights.append(entity_id)
 
     def add_lights(self, ids: list) -> None:
@@ -790,7 +790,7 @@ class Animation:
         If `ignore_off` is enabled the method filters out lights that are
         currently off when selecting a random subset.
         """
-        if self._ignore_off:
+        if not self._ignore_off:
             to_change: list = []
             randomized_list: list = sample(self._active_lights, k=change_amount)
             for light in randomized_list:
