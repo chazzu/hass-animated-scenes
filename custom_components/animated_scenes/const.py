@@ -2,7 +2,7 @@
 
 INTEGRATION_NAME = "Animated Scenes"
 DOMAIN = "animated_scenes"
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 COMPONENT_COLOR_CONFIG_URL = "https://github.com/chazzu/hass-animated-scenes#color-configuration"
 
 ATTR_COLOR_TEMP = "color_temp"  # Deprecated by HASS, will auto-convert to ATTR_COLOR_TEMP_KELVIN
