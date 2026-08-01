@@ -21,7 +21,6 @@ async def start_animation(call: ServiceCall) -> None:
     The service call's data mapping is forwarded to
     `Animations.instance.start`.
     """
-
     _LOGGER.info("Starting animated lights...")
     if Animations.instance:
         await Animations.instance.start(call.data)
@@ -33,7 +32,6 @@ async def stop_animation(call: ServiceCall) -> None:
     The service call's data mapping is forwarded to
     `Animations.instance.stop`.
     """
-
     _LOGGER.info("Stopping animated lights...")
     if Animations.instance:
         await Animations.instance.stop(call.data)
@@ -45,7 +43,6 @@ async def remove_lights(call: ServiceCall) -> None:
     The service call's data mapping is forwarded to
     `Animations.instance.remove_lights`.
     """
-
     _LOGGER.info("Removing lights from animations...")
     if Animations.instance:
         await Animations.instance.remove_lights(call.data)
@@ -57,7 +54,6 @@ async def add_lights_to_animation(call: ServiceCall) -> None:
     Forwards the service call data to
     `Animations.instance.add_lights_to_animation`.
     """
-
     _LOGGER.info("Adding lights to animation...")
     if Animations.instance:
         await Animations.instance.add_lights_to_animation(call.data)

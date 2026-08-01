@@ -12,7 +12,7 @@ start_animation:
     priority:
       name: Priority
       description: Sets a priority for this animation. If multiple animations use the same light, the one with the higher priority will "win" and take control of the light.
-      required: True
+      required: False
       example: 100
       default: 0
       selector:
@@ -24,25 +24,26 @@ start_animation:
       name: Transition
       description: How long a light should take to transition from it's former state to it's new state.
       example: 1
-      required: True
+      required: False
       default: 1
       selector:
         number:
           min: 0
-          max: 120
+          max: 6553
           step: 0.1
           unit_of_measurement: seconds
     change_frequency:
       name: Change Frequency
-      description: How often the animation should change something. Lower values means things will be changing faster, which requires higher system specs.
+      description: Use 0 for a one-shot update. Repeating values must be between 0.1 and 3600 seconds.
       example: 1
       required: False
       default: 1
       selector:
         number:
-          min: 0.5
+          min: 0
           max: 3600
-          step: 1
+          step: 0.1
+          unit_of_measurement: seconds
     change_amount:
       name: Change Amount
       description: How many lights should be changed each time the frequency is hit. Specifying the word 'all' will change all lights.
@@ -53,7 +54,7 @@ start_animation:
       name: Ignore if Off
       description: If a light in the animation list is off, turn it on.
       example: True
-      required: True
+      required: False
       default: True
       selector:
         boolean:
@@ -61,7 +62,7 @@ start_animation:
       name: Restore State at Animation End
       description: When the animation ends, restore lights to their prior state.
       example: True
-      required: True
+      required: False
       default: True
       selector:
         boolean:
@@ -69,7 +70,7 @@ start_animation:
       name: Restore Power at Animation End
       description: When the animation ends, turn any lights that were off back to off.
       example: True
-      required: True
+      required: False
       default: False
       selector:
         boolean:
@@ -78,21 +79,21 @@ start_animation:
       name: Change in Sequence
       description: If set to true, then color changes will happen in order. If set to false, colors will be chosen randomly from the list.
       default: False
-      required: True
+      required: False
       selector:
         boolean:
     animate_brightness:
       name: Animate Brightness
       description: Whether or not to animate the brightness. If set to false, brightness will be set once upon startup.
       default: True
-      required: True
+      required: False
       selector:
         boolean:
     animate_color:
       name: Animate Colors
       description: Whether or not to animate the colors. If set to false, colors will be set once upon startup.
       default: True
-      required: True
+      required: False
       selector:
         boolean:
     lights:

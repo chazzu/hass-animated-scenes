@@ -4,63 +4,97 @@ on:
   release:
     types: [published, edited]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   update_version_and_create_zip:
+    name: Update Version and Create Zip on Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Checkout trusted release tooling
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tooling
+          persist-credentials: false
+          sparse-checkout: .github/scripts/update_release_version.py
+          sparse-checkout-cone-mode: false
+
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
+        with:
+          # Release events must package the release tag instead of a moving
+          # target_commitish branch.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+          path: release-payload
 
-      - name: Debug GitHub Variables
-        run: |
-            echo "github.event_name: ${{ github.event_name }}"
-            echo "github.ref_name: ${{ github.ref_name }}"
-            echo "github.event.release.tag_name: ${{ github.event.release.tag_name }}"
-            echo "github.event.repository.default_branch: ${{ github.event.repository.default_branch }}"
-            echo "github.event.release.target_commitish: ${{ github.event.release.target_commitish }}"
-            echo "github.event.release.prerelease: ${{ github.event.release.prerelease }}"
-            echo "github.event.release.draft: ${{ github.event.release.draft }}"
-
-      - name: Update Version in Manifest
+      - name: Update Release Version Files
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          sed -i 's/\"version\"\s*\:\s*\".*\"/\"version\"\:\"${{ github.event.release.tag_name }}\"/g' ./custom_components/animated_scenes/manifest.json
+          python release-tooling/.github/scripts/update_release_version.py \
+            --tag-name "$TAG_NAME" \
+            --manifest-path release-payload/custom_components/animated_scenes/manifest.json \
+            --const-path release-payload/custom_components/animated_scenes/const.py
 
-      - name: Update Version in const.py
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+      - name: Resolve Release Target Branch
+        id: release-target
+        if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false }}
+        env:
+          TARGET_COMMITISH: ${{ github.event.release.target_commitish }}
+        working-directory: release-payload
         run: |
-          sed -i 's/^VERSION \= \".*\"/VERSION \= \"${{ github.event.release.tag_name }}\"/' ./custom_components/animated_scenes/const.py
+          set -euo pipefail
+          if git check-ref-format --branch "$TARGET_COMMITISH" >/dev/null 2>&1; then
+            if git ls-remote --exit-code --heads origin \
+              "refs/heads/$TARGET_COMMITISH" >/dev/null; then
+              printf 'is_branch=true\nbranch=%s\n' "$TARGET_COMMITISH" >> "$GITHUB_OUTPUT"
+              exit 0
+            elif [[ $? -ne 2 ]]; then
+              echo "Unable to resolve the release target against remote branches" >&2
+              exit 1
+            fi
+          fi
+          printf 'is_branch=false\n' >> "$GITHUB_OUTPUT"
 
       - name: Commit & Push Version Changes
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
-        uses: actions-js/push@master
+        if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false && steps.release-target.outputs.is_branch == 'true' }}
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.event.release.target_commitish }}
-          message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
+          repository: release-payload
+          branch: ${{ steps.release-target.outputs.branch }}
+          commit_message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
 
       - name: Update Release with Version Changes Commit
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false && github.event.release.prerelease == false  }}
+        if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false && steps.release-target.outputs.is_branch == 'true' }}
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        working-directory: release-payload
         run: |
-          git tag -f ${{ github.event.release.tag_name }}
-          git push -f origin ${{ github.event.release.tag_name }}
+          git tag -f "$TAG_NAME"
+          git push -f origin "$TAG_NAME"
 
       - name: Create Zip
         run: |
-          cd ${{ github.workspace }}/custom_components/animated_scenes
+          cd ${{ github.workspace }}/release-payload/custom_components/animated_scenes
           zip animated_scenes.zip -r ./
 
       - name: Upload Zip to Release
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          files: ./custom_components/animated_scenes/animated_scenes.zip
+          files: ./release-payload/custom_components/animated_scenes/animated_scenes.zip
           tag_name: ${{ github.event.release.tag_name }}
 
       - name: Add Zip to Action
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: animated_scenes
-          path: ./custom_components/animated_scenes/animated_scenes.zip
+          path: ./release-payload/custom_components/animated_scenes/animated_scenes.zip
           if-no-files-found: error

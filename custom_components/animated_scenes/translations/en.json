@@ -1,5 +1,11 @@
 {
     "title": "Animated Scenes",
+    "issues": {
+        "deprecated_yaml": {
+            "title": "Animated Scenes YAML configuration is deprecated",
+            "description": "The {integration_title} YAML configuration for {domain} is deprecated. Import the entry through the integration UI and manage it from Settings > Devices & Services."
+        }
+    },
     "config": {
         "step": {
             "user": {
@@ -31,7 +37,7 @@
                 "data_description": {
                     "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light.",
                     "transition": "How many seconds a light should take to transition from its former state to its new state. Can be a number or a range in the format of '[2, 5]' (means to transition the lights over 2 to 5 seconds). Min: 0, Max: 6553.",
-                    "change_frequency": "After how many seconds the animation should change. Can be a number or a range in the format of '[2, 5]' (means to change lights every 2 to 5 seconds). Min: 0, Max: 60.",
+                    "change_frequency": "Use scalar 0 for a one-shot update. Repeating values and both range bounds must be from 0.1 through 3600 seconds.",
                     "change_amount": "How many lights should be changed each time the frequency is hit. Can be a number, a range in the format of '[2, 5]' (means to change between 2 to 5 lights), or specifying the word 'all' will change all lights each time. Min: 0, Max: 65535.",
                     "ignore_off": "If a light in the animation list is off when the animation starts, turn it on. Defaults to True, meaning lights will be ignored if they are off.",
                     "restore": "When the animation ends, restore lights to their prior state.",
@@ -75,12 +81,17 @@
         },
         "error": {
             "change_amount_not_int_or_all": "Change Amount: Not an integer or 'all'. Min: 0, Max: 65535",
-            "change_frequency_not_int_or_range": "Change Frequency: Not an integer or range in format '[2,5]'. Min: 0, Max: 60",
+            "change_frequency_not_int_or_range": "Change Frequency: Use scalar 0 for one-shot, or a repeating value/range from 0.1 through 3600 seconds",
             "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
+            "priority_not_int": "Priority: Not an integer",
             "colors_is_blank": "Colors: Cannot be blank or empty",
             "colors_malformed": "Colors: Invalid format",
-            "must_select_lights": "You must select at least one light for the animation"
+            "must_select_lights": "You must select at least one light for the animation",
+            "scene_name_exists": "An animated scene with this name already exists"
+        },
+        "abort": {
+            "activity_sensor_exists": "An Animated Scenes Activity Sensor already exists"
         }
     },
     "options": {
@@ -105,7 +116,7 @@
                 "data_description": {
                     "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light.",
                     "transition": "How many seconds a light should take to transition from its former state to its new state. Can be a number or a range in the format of '[2, 5]' (means to transition the lights over 2 to 5 seconds). Min: 0, Max: 6553.",
-                    "change_frequency": "After how many seconds the animation should change. Can be a number or a range in the format of '[2, 5]' (means to change lights every 2 to 5 seconds). Min: 0, Max: 60.",
+                    "change_frequency": "Use scalar 0 for a one-shot update. Repeating values and both range bounds must be from 0.1 through 3600 seconds.",
                     "change_amount": "How many lights should be changed each time the frequency is hit. Can be a number, a range in the format of '[2, 5]' (means to change between 2 to 5 lights), or specifying the word 'all' will change all lights each time. Min: 0, Max: 65535.",
                     "ignore_off": "If a light in the animation list is off when the animation starts, turn it on. Defaults to True, meaning lights will be ignored if they are off.",
                     "restore": "When the animation ends, restore lights to their prior state.",
@@ -151,12 +162,14 @@
         },
         "error": {
             "change_amount_not_int_or_all": "Change Amount: Not an integer or 'all'. Min: 0, Max: 65535",
-            "change_frequency_not_int_or_range": "Change Frequency: Not an integer or range in format '[2,5]'. Min: 0, Max: 60",
+            "change_frequency_not_int_or_range": "Change Frequency: Use scalar 0 for one-shot, or a repeating value/range from 0.1 through 3600 seconds",
             "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
+            "priority_not_int": "Priority: Not an integer",
             "colors_is_blank": "Colors: Cannot be blank or empty",
             "colors_malformed": "Colors: Invalid format",
-            "must_select_lights": "You must select at least one light for the animation"
+            "must_select_lights": "You must select at least one light for the animation",
+            "scene_name_exists": "An animated scene with this name already exists"
         },
         "abort": {
             "activity_sensor_no_options": "&nbsp;\n\nNo options are available for the Animated Scenes Activity Sensor",

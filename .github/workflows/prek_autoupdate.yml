@@ -1,0 +1,32 @@
+name: prek Autoupdate
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prek-autoupdate-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  prek-autoupdate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Update prek hooks
+        id: prek-autoupdate
+        uses: Snuffy2/prek-autoupdate@v2
+        with:
+          update-day: "4"

@@ -1,0 +1,71 @@
+name: Post coverage Comment to PR
+
+on:
+  workflow_run:
+    workflows: ['pytest and coverage']
+    types:
+      - completed
+
+jobs:
+  test:
+    name: Post coverage Comment to PR
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    permissions:
+      # Gives the action the necessary permissions for publishing new
+      # comments in pull requests and editing its existing comments.
+      pull-requests: write
+      # Allows the action to read repository metadata without modifying content.
+      contents: read
+      # Gives the action the necessary permissions for looking up the
+      # workflow that launched this workflow, and download the related
+      # artifact that contains the comment to be published
+      actions: read
+    steps:
+      # DO NOT run actions/checkout here, for security reasons
+      # For details, refer to https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+      - name: Check coverage comment eligibility
+        id: coverage_eligibility
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pullRequests = context.payload.workflow_run.pull_requests || [];
+            if (pullRequests.length === 0) {
+              core.setOutput('should_post', 'false');
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const prNumber = pullRequests[0].number;
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id: context.payload.workflow_run.id,
+            });
+            const labels = pullRequest.labels.map((label) => label.name);
+            const hasCommentArtifact = artifacts.artifacts.some(
+              (artifact) =>
+                artifact.name === 'python-coverage-comment-action' && !artifact.expired,
+            );
+            const shouldPost =
+              hasCommentArtifact &&
+              !labels.includes('dependencies') &&
+              pullRequest.user?.type !== 'Bot';
+
+            core.setOutput('has_artifact', String(hasCommentArtifact));
+            core.setOutput('should_post', String(shouldPost));
+
+      - name: Post coverage Comment to PR
+        if: steps.coverage_eligibility.outputs.should_post == 'true'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_RUN_ID: ${{ github.event.workflow_run.id }}
+          # Update those if you changed the default values:
+          # COMMENT_ARTIFACT_NAME: python-coverage-comment-action
+          # COMMENT_FILENAME: python-coverage-comment-action.txt
