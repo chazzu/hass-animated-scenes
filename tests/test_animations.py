@@ -1203,3 +1203,53 @@ async def test_static_brightness_applies_when_brightness_is_not_animated(
 
     assert calls[0]["brightness"] == 50
     await manager.stop({CONF_NAME: "Spooky"})
+
+
+async def test_same_priority_restart_does_not_flash_lower_scene(hass: HomeAssistant) -> None:
+    """Keep ownership through a same-priority restart without a lower-scene flash."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    await _start(
+        manager,
+        "Low",
+        ["light.one"],
+        priority=1,
+        animate_color=False,
+        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    )
+    await _start(manager, "High", ["light.one"], priority=10)
+    calls.clear()
+
+    restarted = await _start(manager, "High", ["light.one"], priority=10)
+    await hass.async_block_till_done()
+
+    assert (0, 255, 0) not in [call.get("rgb_color") for call in calls]
+    assert manager.light_owner["light.one"] is restarted
+    await manager.stop({CONF_NAME: "High"})
+    await manager.stop({CONF_NAME: "Low"})
+
+
+async def test_lowered_priority_restart_hands_off_to_other_scene(hass: HomeAssistant) -> None:
+    """Hand a light to the other scene when a restart drops below its priority."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    other = await _start(
+        manager,
+        "Other",
+        ["light.one"],
+        priority=5,
+        animate_color=False,
+        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    )
+    await _start(manager, "High", ["light.one"], priority=10)
+    calls.clear()
+
+    await _start(manager, "High", ["light.one"], priority=1)
+    await hass.async_block_till_done()
+
+    assert (0, 255, 0) in [call.get("rgb_color") for call in calls]
+    assert manager.light_owner["light.one"] is other
+    await manager.stop({CONF_NAME: "High"})
+    await manager.stop({CONF_NAME: "Other"})

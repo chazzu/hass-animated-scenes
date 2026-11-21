@@ -122,6 +122,24 @@ def _whole_float_to_int(value: float) -> int:
     return int(value)
 
 
+def _reject_non_finite_float(value: Any) -> Any:
+    """Reject infinite or NaN floats before integer coercion can crash on them.
+
+    Args:
+        value: Color temperature supplied through a flow or service call.
+
+    Returns:
+        The unchanged value when it is not a non-finite float.
+
+    Raises:
+        vol.Invalid: If the value is a float that is infinite or NaN.
+
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        raise vol.Invalid("color temperature must be a finite number")
+    return value
+
+
 def _priority_to_int(value: Any) -> int:
     """Convert an integral priority value to int with its flow error key.
 
@@ -251,7 +269,11 @@ CHANGE_FREQUENCY_RANGE_SCHEMA = vol.All(
 CHANGE_AMOUNT_RANGE_SCHEMA = vol.Any(
     "all",
     CHANGE_AMOUNT_VALUE_SCHEMA,
-    vol.Match(INT_RANGE_PATTERN),
+    vol.All(
+        vol.Match(INT_RANGE_PATTERN),
+        _strlist_to_list,
+        vol.ExactSequence((CHANGE_AMOUNT_VALUE_SCHEMA, CHANGE_AMOUNT_VALUE_SCHEMA)),
+    ),
     vol.ExactSequence(
         (
             CHANGE_AMOUNT_VALUE_SCHEMA,
@@ -364,13 +386,17 @@ START_SERVICE_CONFIG = {
                 vol.Schema(
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP,
-                        vol.Required(CONF_COLOR): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                        vol.Required(CONF_COLOR): vol.All(
+                            _reject_non_finite_float, vol.Coerce(int), vol.Range(min=1)
+                        ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
                 vol.Schema(
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP_KELVIN,
-                        vol.Required(CONF_COLOR): cv.positive_int,
+                        vol.Required(CONF_COLOR): vol.All(
+                            _reject_non_finite_float, cv.positive_int
+                        ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
             )

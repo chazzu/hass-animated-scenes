@@ -234,6 +234,9 @@ class AnimatedSceneSwitch(SwitchEntity):
     async def async_added_to_hass(self) -> None:
         """Subscribe the switch to animation lifecycle events.
 
+        Also syncs the on/off state with a scene already running under this
+        name, such as one started by a service before this entry was set up.
+
         Returns:
             None. The listener removal callback is registered with Home
             Assistant so it is cleaned up automatically when the entity unloads.
@@ -242,6 +245,8 @@ class AnimatedSceneSwitch(SwitchEntity):
         self.async_on_remove(
             self.hass.bus.async_listen(EVENT_NAME_CHANGE, self._handle_animation_event)
         )
+        manager = Animations.instance
+        self._attr_is_on = manager is not None and self._attr_name in manager.animations
 
     @callback
     def _handle_animation_event(self, event: Event) -> None:

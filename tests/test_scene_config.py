@@ -683,3 +683,60 @@ def test_new_scene_and_service_defaults_match_legacy_runtime() -> None:
 
     assert {key: scene[key] for key in expected} == expected
     assert {key: service[key] for key in expected} == expected
+
+
+@pytest.mark.parametrize(
+    ("change_amount", "expected"), [("[1, 3]", [1, 3]), ("all", "all"), (4, 4), ((1, 3), (1, 3))]
+)
+def test_start_schema_accepts_change_amount_forms(change_amount: object, expected: object) -> None:
+    """Keep accepting every documented change-amount form."""
+    data = normalize_scene_input(_base_input())
+    data[CONF_CHANGE_AMOUNT] = change_amount
+
+    assert validate_start_service_data(data)[CONF_CHANGE_AMOUNT] == expected
+
+
+@pytest.mark.parametrize("change_amount", ["[1, 65536]"])
+def test_start_schema_rejects_out_of_range_text_change_amount(change_amount: str) -> None:
+    """Reject out-of-bounds text ranges instead of passing them to the runtime."""
+    data = normalize_scene_input(_base_input())
+    data[CONF_CHANGE_AMOUNT] = change_amount
+
+    with pytest.raises(vol.Invalid):
+        validate_start_service_data(data)
+
+
+@pytest.mark.parametrize("color_type", ["color_temp", "color_temp_kelvin"])
+@pytest.mark.parametrize(
+    ("color", "expected"), [(250, 250), (250.0, 250), ("4500", 4500), (250.5, 250)]
+)
+def test_color_temp_schema_preserves_finite_values(
+    color_type: str, color: object, expected: int
+) -> None:
+    """Preserve valid color temperature inputs."""
+    data = normalize_scene_input(_base_input())
+    data[CONF_COLORS] = [{"color_type": color_type, "color": color}]
+
+    assert validate_start_service_data(data)[CONF_COLORS][0]["color"] == expected
+
+
+def test_color_temp_kelvin_schema_still_accepts_zero() -> None:
+    """Keep the prior kelvin acceptance of zero."""
+    data = normalize_scene_input(_base_input())
+    data[CONF_COLORS] = [{"color_type": "color_temp_kelvin", "color": 0}]
+
+    assert validate_start_service_data(data)[CONF_COLORS][0]["color"] == 0
+
+
+@pytest.mark.parametrize("color_type", ["color_temp", "color_temp_kelvin"])
+@pytest.mark.parametrize("color", [float("inf"), float("-inf"), "inf", ".inf", float("nan")])
+def test_color_temp_schema_rejects_non_finite(color_type: str, color: object) -> None:
+    """Report non-finite color temperatures as validation errors."""
+    with pytest.raises(vol.Invalid):
+        START_SERVICE_SCHEMA(
+            {
+                CONF_NAME: "Spooky",
+                CONF_LIGHTS: ["light.one"],
+                CONF_COLORS: [{"color_type": color_type, "color": color}],
+            }
+        )

@@ -135,3 +135,29 @@ async def test_start_service_accepts_tuple_ranges(hass: HomeAssistant) -> None:
     assert 1 <= animation.get_transition() <= 2
     assert 1 <= animation.get_change_amount() <= 2
     await manager.stop({CONF_NAME: "Spooky"})
+
+
+async def test_start_service_accepts_text_change_amount_range(hass: HomeAssistant) -> None:
+    """Start a scene from a text change-amount range through the real service."""
+    await async_setup(hass, {})
+    manager = Animations.instance
+    assert manager is not None
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", ORIGINAL)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "start_animation",
+        {
+            CONF_NAME: "Spooky",
+            CONF_LIGHTS: ["light.one"],
+            "colors": COLORS,
+            "change_frequency": 60,
+            "change_amount": "[1, 3]",
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert "Spooky" in manager.animations
+    await hass.services.async_call(DOMAIN, "stop_animation", {CONF_NAME: "Spooky"}, blocking=True)

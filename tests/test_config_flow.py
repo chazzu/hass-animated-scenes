@@ -639,6 +639,26 @@ async def test_options_yaml_accepts_imported_legacy_platform(
             ERROR_COLORS_MALFORMED,
             id="malformed",
         ),
+        pytest.param(
+            [{"color_type": "color_temp", "color": float("inf")}],
+            ERROR_COLORS_MALFORMED,
+            id="color_temp_inf",
+        ),
+        pytest.param(
+            [{"color_type": "color_temp", "color": float("-inf")}],
+            ERROR_COLORS_MALFORMED,
+            id="color_temp_neg_inf",
+        ),
+        pytest.param(
+            [{"color_type": "color_temp_kelvin", "color": float("inf")}],
+            ERROR_COLORS_MALFORMED,
+            id="color_temp_kelvin_float_inf",
+        ),
+        pytest.param(
+            [{"color_type": "color_temp_kelvin", "color": "inf"}],
+            ERROR_COLORS_MALFORMED,
+            id="color_temp_kelvin_inf",
+        ),
     ],
 )
 async def test_options_yaml_rejects_invalid_colors(

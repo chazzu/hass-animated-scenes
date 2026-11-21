@@ -94,7 +94,7 @@ nearby_colors: 0
 | --- | --- |
 | `weight` | Higher values make that color more likely to be selected. |
 | `brightness` | A brightness value from `0` to `255`, or a range like `[70, 255]`. |
-| `one_change_per_tick` | When true, only brightness or color changes on a single update. |
+| `one_change_per_tick` | When true, about half of the updates change only brightness. The other updates change the color, and the brightness too if brightness animation is on. Requires a brightness value on this color. The first update always applies the color. |
 | `nearby_colors` | For RGB colors, choose a nearby color instead of the exact color. Use `0` to disable, or `1` through `10` to increase the variation. |
 
 ### RGB
@@ -212,7 +212,7 @@ The `name` is the animation ID. Use the same name to stop it later.
 
 `start_animation` and new UI scenes share the same defaults: `priority: 100`, `restore_power: true`, and `change_amount: 1`. Existing scenes keep their saved values.
 
-When `animate_brightness` is off, the top-level `brightness` must be a single number; a range is ignored. When it is on, each color uses its own brightness, and the top-level `brightness` is the fallback for a color without one.
+A color without its own `brightness` uses 255. When `animate_brightness` is off, the top-level `brightness` (a single number) applies; a range is ignored in that mode.
 
 ### Stop An Animation
 

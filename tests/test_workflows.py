@@ -69,6 +69,14 @@ def test_coverage_publication_is_isolated_to_trusted_pushes() -> None:
     assert not [step for step in job["steps"] if "run" in step]
 
 
+def test_coverage_publication_serializes_without_cancelling() -> None:
+    """Queue default-branch coverage publishes in order and leave the tests job unqueued."""
+    job = _job("pytest_coverage.yml", "publish-coverage-data")
+
+    assert job["concurrency"] == {"group": "coverage-data-publish", "cancel-in-progress": False}
+    assert "concurrency" not in _job("pytest_coverage.yml", "tests")
+
+
 def test_privileged_comment_workflow_never_checks_out_pr_code() -> None:
     """Keep the workflow_run job from executing untrusted pull request content."""
     job = _job("post_coverage_to_pr.yml", "test")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 import logging
 from unittest.mock import AsyncMock, patch
@@ -9,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.const import CONF_NAME, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
@@ -217,3 +219,39 @@ def test_platform_schema_checks_color_weights_for_random_mode(
     else:
         with pytest.raises(vol.Invalid, match="colors_malformed"):
             PLATFORM_SCHEMA(config)
+
+
+async def test_switch_syncs_with_scene_started_before_entry_setup(hass: HomeAssistant) -> None:
+    """Show a service-started scene as on and keep turn-on from restarting it."""
+    assert await async_setup_component(hass, DOMAIN, {})
+    manager = Animations.instance
+    assert manager is not None
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    data = _switch_config()
+    await manager.start(
+        {
+            "name": "Spooky",
+            "lights": ["light.one"],
+            CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+            "change_frequency": 3600,
+        }
+    )
+    await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    calls.clear()
+
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Spooky", data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("switch.animated_scenes_spooky")
+    assert state is not None
+    assert state.state == STATE_ON
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert calls == []
+    await manager.stop({CONF_NAME: "Spooky"})

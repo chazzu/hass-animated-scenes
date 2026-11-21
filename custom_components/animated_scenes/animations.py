@@ -220,6 +220,7 @@ class Animation:
         self._restore: bool = config[CONF_RESTORE]
         self._restore_power: bool = config[CONF_RESTORE_POWER]
         self._restart_lights: set[str] = set()
+        self._restart_owned_lights: set[str] = set()
         self._sequence: bool = config[CONF_CHANGE_SEQUENCE]
         self._task: Task | None = None
         self._transition: NumberConfig = config[CONF_TRANSITION]
@@ -723,6 +724,7 @@ class Animation:
                     await Animations.instance.release_light(
                         self,
                         light,
+                        skip_ownership=light in self._restart_owned_lights,
                         skip_restore=light in self._restart_lights,
                         refresh=False,
                     )
@@ -735,17 +737,20 @@ class Animation:
                 {"animation": self._name, "state": EVENT_STATE_STOPPED},
             )
 
-    def keep_states_for_restart(self, lights: set[str]) -> None:
+    def keep_states_for_restart(self, lights: set[str], owned_lights: set[str]) -> None:
         """Skip restoring lights whose saved state carries into a restart.
 
         Args:
             lights: Entity ids that the replacement animation will keep using.
+            owned_lights: Subset of ``lights`` the replacement will keep
+                owning, so they are not handed to another animation first.
 
         Returns:
             None
 
         """
         self._restart_lights = lights
+        self._restart_owned_lights = owned_lights
 
     def remove_light(self, light: str) -> None:
         """Remove a light from this animation's configured and active lists."""
@@ -993,7 +998,17 @@ class Animations:
                 for light in previous.get_active_lights()
                 if light in next_lights and light in self.states
             }
-            previous.keep_states_for_restart(set(preserved_states))
+            # Skip the handoff only where no other scene outranks the restart.
+            owned_lights = {
+                light
+                for light in preserved_states
+                if all(
+                    other.priority <= config[CONF_PRIORITY]
+                    for other in self._light_animations.get(light, [])
+                    if other is not previous
+                )
+            }
+            previous.keep_states_for_restart(set(preserved_states), owned_lights)
             await previous.stop()
             self.states.update(preserved_states)
         _LOGGER.info("Starting animation '%s'", id_name)

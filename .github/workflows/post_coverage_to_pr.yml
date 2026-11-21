@@ -65,6 +65,13 @@ jobs:
               repo,
               pull_number: prNumber,
             });
+            if (pullRequest.head.sha !== workflowRun.head_sha) {
+              core.info(
+                `Skipping coverage comment: PR head ${pullRequest.head.sha} no longer matches workflow run head ${workflowRun.head_sha}.`,
+              );
+              core.setOutput('should_post', 'false');
+              return;
+            }
             const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
               owner,
               repo,

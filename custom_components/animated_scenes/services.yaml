@@ -44,7 +44,7 @@ start_animation:
           unit_of_measurement: seconds
     change_frequency:
       name: Change Frequency
-      description: After how many seconds the animation should change. Use 0 to change the lights once and then stop. Otherwise, Min 0.1, Max 3600.
+      description: After how many seconds the animation should change. Use 0 to change the lights once and then stop; turn off Restore State at Animation End to keep the new colors. Otherwise, Min 0.1, Max 3600.
       example: 1
       required: False
       default: 1

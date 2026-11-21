@@ -3,7 +3,7 @@
     "issues": {
         "deprecated_yaml": {
             "title": "Animated Scenes YAML configuration is deprecated",
-            "description": "The {integration_title} YAML configuration for {domain} is deprecated. Import the entry through the integration UI and manage it from Settings > Devices & Services."
+            "description": "Your {integration_title} scenes from YAML ({domain}) are imported automatically into Settings > Devices & Services. A scene is skipped if one with the same name already exists. Once your scenes appear there, remove them from your YAML configuration. Later YAML changes will not update the imported scenes, so edit them in Settings > Devices & Services."
         }
     },
     "config": {
