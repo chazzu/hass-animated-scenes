@@ -172,6 +172,31 @@ async def test_scene_creation_rejects_duplicate_name(hass: HomeAssistant) -> Non
     assert result["errors"] == {"base": ERROR_SCENE_NAME_EXISTS}
 
 
+async def test_scene_creation_strips_name_and_rejects_padded_duplicate(
+    hass: HomeAssistant,
+) -> None:
+    """Store a stripped name and reject a padded copy of an existing scene."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "scene"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _scene_input("  Foo ")
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_COLORS: [{"color_type": "rgb_color", "color": [1, 2, 3]}]}
+    )
+    assert result["type"] == "create_entry"
+    assert result["title"] == "Foo"
+    assert [entry.data[CONF_NAME] for entry in hass.config_entries.async_entries(DOMAIN)] == ["Foo"]
+
+    flow = AnimatedScenesConfigFlow()
+    flow.hass = hass
+    duplicate = await flow.async_step_scene(_scene_input(" Foo"))
+
+    assert duplicate["errors"] == {"base": ERROR_SCENE_NAME_EXISTS}
+
+
 def _yaml_scene(name: str = "Spooky", **overrides: object) -> dict[str, object]:
     """Return a legacy YAML scene validated by the switch platform schema."""
     return PLATFORM_SCHEMA(
@@ -207,6 +232,15 @@ async def test_yaml_import_creates_scene_entry(hass: HomeAssistant) -> None:
     assert entries[0].data[CONF_COLOR_SELECTOR_MODE] == COLOR_SELECTOR_YAML
     assert entries[0].data[CONF_ENTITY_TYPE] == ENTITY_SCENE
     assert hass.config_entries.flow.async_progress() == []
+
+
+async def test_yaml_import_strips_scene_name(hass: HomeAssistant) -> None:
+    """Store an imported scene under its stripped name."""
+    result = await _import_yaml_scene(hass, _yaml_scene(" Foo "))
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == "Foo"
+    assert hass.config_entries.async_entries(DOMAIN)[0].data[CONF_NAME] == "Foo"
 
 
 @pytest.mark.parametrize(

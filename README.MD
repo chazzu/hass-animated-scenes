@@ -41,7 +41,7 @@ Animated scenes are not Home Assistant scene entities. They are switch entities 
 1. Go to **Settings > Devices & Services**.
 1. Open **Animated Scenes**.
 1. Select **Add Device**.
-1. Choose **Create a New Animated Scene**.
+1. If asked to choose, select **Create a New Animated Scene**. (This menu only appears until an activity sensor exists.)
 1. Fill in the scene options and select the lights to animate.
 1. Choose a color selector mode:
    - **Use RGB Selectors** for simple RGB color selection in the Home Assistant UI.
@@ -72,6 +72,8 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 
 Set `change_frequency: 0` to change the lights once and then stop. Normal restore settings still apply: with `restore: true`, the lights immediately return to their previous settings, and `restore_power` controls whether lights that were off turn back off. Set `restore: false` to keep the new colors.
 
+When a higher-priority scene stops, or a higher-priority one-shot scene (`change_frequency: 0`) finishes, the light is handed back to the lower-priority running scene, which applies its color right away.
+
 ## Color Configuration
 
 For simple RGB animations, use the **Use RGB Selectors** color mode. You can add multiple colors (check **Add Another Color**) and set each color's brightness, weight, nearby-color behavior, and one-change-per-tick behavior from the UI.
@@ -93,7 +95,7 @@ nearby_colors: 0
 | --- | --- |
 | `weight` | Higher values make that color more likely to be selected. |
 | `brightness` | A brightness value from `0` to `255`, or a range like `[70, 255]`. |
-| `one_change_per_tick` | Needs the color to have its own `brightness`. The first update of a light always applies the color. Once a light has used a color with this option, it keeps the behavior for the rest of the animation, even if later updates pick other colors. After that, about half of that light's updates change only its brightness, using this color's `brightness` (even when `animate_brightness` is off), and keep the current color. The other updates pick a color as usual. |
+| `one_change_per_tick` | The first update of a light always applies the color. Once a light has used a color with this option, it keeps the behavior for the rest of the animation, even if later updates pick other colors. After that, about half of that light's updates change only its brightness, using this color's `brightness` (even when `animate_brightness` is off), and keep the current color. The other updates pick a color as usual. |
 | `nearby_colors` | For RGB, RGBW, RGBWW, HS, XY, and color temperature colors, choose a nearby color instead of the exact color. Use `0` to disable, or `1` through `10` to increase the variation. |
 
 <details>

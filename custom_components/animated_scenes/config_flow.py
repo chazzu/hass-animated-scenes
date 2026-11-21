@@ -443,6 +443,18 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data[CONF_COLORS] = {}
         self._entry = None
 
+    def _activity_sensor_exists(self) -> bool:
+        """Return whether an activity sensor config entry already exists.
+
+        Returns:
+            True when any Animated Scenes entry is an activity sensor.
+
+        """
+        return any(
+            entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+        )
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step.
 
@@ -450,11 +462,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         a scene entry, depending on whether an activity sensor already
         exists.
         """
-        activity_sensor_exists = any(
-            entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR
-            for entry in self.hass.config_entries.async_entries(DOMAIN)
-        )
-        if activity_sensor_exists:
+        if self._activity_sensor_exists():
             return await self.async_step_scene(user_input=user_input)
         return self.async_show_menu(
             step_id="user",
@@ -463,10 +471,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_activity_sensor(self, _: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Create an activity sensor config entry immediately."""
-        if any(
-            entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR
-            for entry in self.hass.config_entries.async_entries(DOMAIN)
-        ):
+        if self._activity_sensor_exists():
             return self.async_abort(reason=ABORT_ACTIVITY_SENSOR_EXISTS)
         self._data.update({CONF_NAME: "Activity Sensor", CONF_ENTITY_TYPE: ENTITY_ACTIVITY_SENSOR})
         return self.async_create_entry(title="Activity Sensor", data=self._data)
@@ -486,8 +491,9 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._data.update(user_input)
+            self._data[CONF_NAME] = str(self._data[CONF_NAME]).strip()
             self._data.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
-            if not str(self._data[CONF_NAME]).strip():
+            if not self._data[CONF_NAME]:
                 errors["base"] = ERROR_SCENE_NAME_BLANK
             elif scene_name_exists(self.hass, self._data[CONF_NAME]):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS
@@ -712,8 +718,9 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
 
         if user_input is not None:
             self._data.update(user_input)
+            self._data[CONF_NAME] = str(self._data[CONF_NAME]).strip()
             self._data.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
-            if not str(self._data[CONF_NAME]).strip():
+            if not self._data[CONF_NAME]:
                 errors["base"] = ERROR_SCENE_NAME_BLANK
             elif scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS

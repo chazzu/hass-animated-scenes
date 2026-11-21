@@ -86,7 +86,7 @@
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
             "priority_not_int": "Priority: Must be a whole number from -1,000,000,000 to 1,000,000,000",
             "colors_is_blank": "Colors: Cannot be blank or empty",
-            "colors_malformed": "Colors: Invalid format",
+            "colors_malformed": "Colors: Invalid format. Colors must be valid and, in random color mode, the total weight must be above 0",
             "must_select_lights": "You must select at least one light for the animation",
             "scene_name_blank": "Scene name cannot be blank",
             "scene_name_exists": "An animated scene with this name already exists"
@@ -173,7 +173,7 @@
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
             "priority_not_int": "Priority: Must be a whole number from -1,000,000,000 to 1,000,000,000",
             "colors_is_blank": "Colors: Cannot be blank or empty",
-            "colors_malformed": "Colors: Invalid format",
+            "colors_malformed": "Colors: Invalid format. Colors must be valid and, in random color mode, the total weight must be above 0",
             "must_select_lights": "You must select at least one light for the animation",
             "scene_name_blank": "Scene name cannot be blank",
             "scene_name_exists": "An animated scene with this name already exists"

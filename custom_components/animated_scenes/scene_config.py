@@ -129,17 +129,18 @@ def scene_name_exists(hass: HomeAssistant, name: str, exclude_entry_id: str | No
 
     Args:
         hass: Home Assistant instance containing config entries.
-        name: Proposed runtime scene name.
+        name: Proposed runtime scene name; surrounding whitespace is ignored.
         exclude_entry_id: Entry id to ignore while validating an options rename.
 
     Returns:
         True when another Animated Scenes scene entry uses the proposed name.
 
     """
+    stripped_name = name.strip()
     return any(
         entry.entry_id != exclude_entry_id
         and entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_SCENE
-        and entry.data.get(CONF_NAME) == name
+        and str(entry.data.get(CONF_NAME)).strip() == stripped_name
         for entry in hass.config_entries.async_entries(DOMAIN)
     )
 

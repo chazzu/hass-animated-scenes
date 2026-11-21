@@ -14,7 +14,6 @@ from homeassistant.components.switch import ENTITY_ID_FORMAT, SwitchEntity
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.const import CONF_BRIGHTNESS, CONF_ICON, CONF_LIGHTS, CONF_NAME, MATCH_ALL
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.exceptions import IntegrationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
@@ -294,15 +293,9 @@ class AnimatedSceneSwitch(SwitchEntity):
         if not self._attr_is_on:
             manager = Animations.instance
             if manager:
-                try:
-                    await manager.start(self._animation_config)
-                except IntegrationError as err:
-                    _LOGGER.error(
-                        "Failed to start animated scene %s: %s",
-                        self._attr_name,
-                        err,
-                    )
-                    return
+                # A start failure propagates so callers and traces see it; the
+                # switch was off before this call and stays off.
+                await manager.start(self._animation_config)
                 self._attr_is_on = self._attr_name in manager.animations
             else:
                 _LOGGER.warning(

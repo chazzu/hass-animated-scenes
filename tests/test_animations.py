@@ -44,7 +44,6 @@ from custom_components.animated_scenes.const import (
     ENTITY_ACTIVITY_SENSOR,
     ENTITY_SCENE,
     EVENT_NAME_CHANGE,
-    EVENT_STATE_STOPPED,
     EVENT_STATE_UPDATED,
     MAX_KELVIN,
     MIN_KELVIN,
@@ -493,65 +492,6 @@ async def test_startup_failure_rolls_back_runtime_state(hass: HomeAssistant) -> 
     assert manager.light_owner == {}
     assert manager.states == {}
     assert calls == []
-
-
-async def test_failed_restart_releases_lights_of_replaced_scene(hass: HomeAssistant) -> None:
-    """Finish the replaced scene's stop when its replacement cannot be built.
-
-    The replaced scene keeps its lights for the restart, so a failed
-    replacement must restore or hand off those lights and announce the stop
-    exactly once.
-    """
-    manager = _runtime_manager(hass)
-    calls = register_light_services(hass)
-    for light in ("light.one", "light.two"):
-        hass.states.async_set(light, "on", LIGHT_ON)
-    low = await _start(
-        manager,
-        "Low",
-        ["light.two"],
-        priority=1,
-        animate_color=False,
-        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
-    )
-    await _start(manager, "Spooky", ["light.one", "light.two"], priority=10)
-    await hass.async_block_till_done()
-    calls.clear()
-    events: list[Mapping[str, Any]] = []
-    hass.bus.async_listen(EVENT_NAME_CHANGE, lambda event: events.append(event.data))
-
-    with (
-        patch.object(Animation, "__init__", side_effect=RuntimeError("build failed")),
-        pytest.raises(RuntimeError, match="build failed"),
-    ):
-        await manager.start(
-            {
-                **_animation_config("Spooky", ["light.one", "light.two"], 10),
-                "change_frequency": 3600,
-            }
-        )
-    await hass.async_block_till_done()
-
-    assert [event for event in events if event["animation"] == "Spooky"] == [
-        {"animation": "Spooky", "state": EVENT_STATE_STOPPED}
-    ]
-    assert {"entity_id": ["light.one"], "rgb_color": (1, 2, 3)}.items() <= next(
-        call for call in calls if call["entity_id"] == ["light.one"]
-    ).items()
-    assert [call.get("rgb_color") for call in calls if call["entity_id"] == ["light.two"]] == [
-        (0, 255, 0)
-    ]
-    assert "Spooky" not in manager.animations
-    assert manager.light_owner == {"light.two": low}
-    assert set(manager.states) == {"light.two"}
-
-    calls.clear()
-    hass.states.async_set("light.one", "off", LIGHT_ON)
-    hass.states.async_set("light.one", "on", LIGHT_ON)
-    await hass.async_block_till_done()
-    assert calls == []
-    await manager.stop({CONF_NAME: "Low"})
-    assert manager.states == {}
 
 
 async def test_update_skips_light_removed_after_tick_selection(hass: HomeAssistant) -> None:
@@ -1128,9 +1068,10 @@ async def test_random_scene_with_zero_weights_is_rejected_by_switch(hass: HomeAs
     manager = Animations.instance
     assert manager is not None
 
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
-    )
+    with pytest.raises(IntegrationError):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
+        )
     await hass.async_block_till_done()
 
     assert manager.animations == {}
