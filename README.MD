@@ -210,6 +210,8 @@ data:
 
 The `name` is the animation ID. Use the same name to stop it later.
 
+If a `start_animation` call omits these fields, it uses `priority: 100`, `restore_power: true`, and `change_amount: 1`. Scenes created in the UI start with `priority: 0`, `restore_power: false`, and `change_amount: all`, and keep their saved values.
+
 ### Stop An Animation
 
 ```yaml

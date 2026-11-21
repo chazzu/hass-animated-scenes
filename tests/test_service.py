@@ -75,3 +75,33 @@ async def test_service_lifecycle_controls_lights(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert manager.animations == {}
     assert animation_tasks("Spooky") == []
+
+
+async def test_start_service_keeps_legacy_defaults_for_omitted_fields(
+    hass: HomeAssistant,
+) -> None:
+    """Keep existing automations unchanged when they omit optional fields."""
+    await async_setup(hass, {})
+    manager = Animations.instance
+    assert manager is not None
+    register_light_services(hass)
+    for light in ("light.one", "light.two"):
+        hass.states.async_set(light, "on", ORIGINAL)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "start_animation",
+        {
+            CONF_NAME: "Spooky",
+            CONF_LIGHTS: ["light.one", "light.two"],
+            "colors": COLORS,
+            "change_frequency": 60,
+        },
+        blocking=True,
+    )
+
+    animation = manager.animations["Spooky"]
+    assert animation.priority == 100
+    assert animation.restore_power is True
+    assert animation.get_change_amount() == 1
+    await manager.stop({CONF_NAME: "Spooky"})

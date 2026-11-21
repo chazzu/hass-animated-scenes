@@ -14,7 +14,7 @@ start_animation:
       description: Sets a priority for this animation. If multiple animations use the same light, the one with the higher priority will "win" and take control of the light.
       required: False
       example: 100
-      default: 0
+      default: 100
       selector:
         number:
           min: -100
@@ -47,7 +47,7 @@ start_animation:
     change_amount:
       name: Change Amount
       description: How many lights should be changed each time the frequency is hit. Specifying the word 'all' will change all lights.
-      default: all
+      default: "1"
       selector:
         text:
     ignore_off:
@@ -71,7 +71,7 @@ start_animation:
       description: When the animation ends, turn any lights that were off back to off.
       example: True
       required: False
-      default: False
+      default: True
       selector:
         boolean:
 
