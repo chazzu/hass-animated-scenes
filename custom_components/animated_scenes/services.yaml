@@ -44,7 +44,7 @@ start_animation:
           unit_of_measurement: seconds
     change_frequency:
       name: Change Frequency
-      description: Use 0 for a one-shot update. Repeating values must be between 0.1 and 3600 seconds.
+      description: After how many seconds the animation should change. Use 0 to change the lights once and then stop. Otherwise, Min 0.1, Max 3600.
       example: 1
       required: False
       default: 1

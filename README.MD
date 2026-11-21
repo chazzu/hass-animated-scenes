@@ -59,7 +59,7 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 | `name` | The scene name. This is also the animation name used by services. |
 | `priority` | Higher-priority animations win when multiple animations want the same light. |
 | `transition` | How long each light transition takes, in seconds. |
-| `change_frequency` | Use scalar `0` for one initial update followed by immediate release. Repeating values and both range bounds must be `0.1` through `3600` seconds. A range starting at `0` is treated as starting at `0.1`. |
+| `change_frequency` | How many seconds to wait between changes. Use a number or a range like `[2, 5]`, from `0.1` to `3600`. Use `0` to change the lights once and then stop. A range starting at `0` starts at `0.1` instead. |
 | `change_amount` | How many lights change each tick. Use a number, a range like `[1, 3]`, or `all`. |
 | `ignore_off` | When enabled, the animation ignores the current off state and includes those lights. When disabled, lights that are off are skipped. |
 | `restore` | Restore previous light state when the animation ends. |
@@ -70,7 +70,7 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 | `animate_color` | Continue changing colors while the animation runs. |
 | `lights` | The lights included in the animation. |
 
-A scalar `change_frequency: 0` creates a one-shot scene: it performs the initial light update and then releases the animation. Normal release settings still apply. With `restore: true`, prior light attributes are restored; `restore_power` controls whether lights that were originally off are turned back off. Set `restore: false` when the one-shot change should persist.
+Set `change_frequency: 0` to change the lights once and then stop. Normal restore settings still apply: with `restore: true`, the lights immediately return to their previous settings, and `restore_power` controls whether lights that were off turn back off. Set `restore: false` to keep the new colors.
 
 ## Color Configuration
 
@@ -268,7 +268,7 @@ Animated Scenes validates UI configuration and service calls before starting an 
 | Field | Allowed values |
 | --- | --- |
 | `transition` | `0` to `6553` seconds, or a two-item range like `[0.5, 2]`. |
-| `change_frequency` | Scalar `0` performs one initial update and immediately releases. Repeating values and both bounds of a range such as `[0.1, 1.5]` must be `0.1` through `3600` seconds. A range starting at `0` is treated as starting at `0.1`. |
+| `change_frequency` | `0` changes the lights once and then stops. Otherwise, a number or a range like `[2, 5]`, from `0.1` to `3600` seconds. A range starting at `0` starts at `0.1` instead. |
 | `priority` | Any whole number. |
 | `change_amount` | An integer, a two-item range like `[1, 3]`, or `all`. Values above the active light count change every active light without replacing the saved value. |
 | `brightness` | `0` to `255`, or a two-item range like `[70, 255]`. |
