@@ -10,12 +10,15 @@ from types import ModuleType
 
 import pytest
 
+import custom_components
 from custom_components.animated_scenes.animations import Animations
 from custom_components.animated_scenes.const import DOMAIN
 
 pytest_plugins = ("pytest_homeassistant_custom_component",)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# Editable installs add a path hook that Home Assistant cannot scan for integrations.
+custom_components.__path__ = [str(REPO_ROOT / "custom_components")]
 RELEASE_VERSION_SCRIPT_PATH = REPO_ROOT / ".github/scripts/update_release_version.py"
 
 

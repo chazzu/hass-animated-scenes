@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import cast
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.const import CONF_BRIGHTNESS, CONF_LIGHTS, CONF_NAME
@@ -11,7 +10,7 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.animated_scenes.animations import Animation, Animations
+from custom_components.animated_scenes.animations import Animations
 from custom_components.animated_scenes.config_flow import (
     AnimatedScenesConfigFlow,
     AnimatedScenesOptionsFlowHandler,
@@ -47,6 +46,8 @@ from custom_components.animated_scenes.scene_config import (
     validate_start_service_data,
 )
 
+from .helpers import animation_tasks, register_light_services
+
 
 def _schema_has_key(data_schema: object, key: str) -> bool:
     """Return whether a voluptuous schema includes a top-level key."""
@@ -59,6 +60,8 @@ def _options_flow(
     *,
     selector_mode: str = COLOR_SELECTOR_YAML,
     color_rgb_dict: dict[str, dict[str, object]] | None = None,
+    omit: tuple[str, ...] = (),
+    extra: dict[str, object] | None = None,
 ) -> tuple[AnimatedScenesOptionsFlowHandler, MockConfigEntry]:
     """Return an options flow and its backing scene config entry."""
     data: dict[str, object] = {
@@ -78,6 +81,9 @@ def _options_flow(
                 "brightness": 255,
             }
         )
+    data.update(extra or {})
+    for key in omit:
+        data.pop(key, None)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Spooky",
@@ -373,8 +379,7 @@ async def test_options_scene_form_exposes_name_for_rename(hass: HomeAssistant) -
 
 async def test_legacy_scene_without_entity_type_has_options(hass: HomeAssistant) -> None:
     """Treat legacy options data without entity type as a scene."""
-    flow, _ = _options_flow(hass)
-    flow._data.pop(CONF_ENTITY_TYPE)
+    flow, _ = _options_flow(hass, omit=(CONF_ENTITY_TYPE,))
 
     result = await flow.async_step_init()
 
@@ -402,8 +407,9 @@ async def test_options_rgb_ui_adds_color_when_stored_color_dict_is_missing(
     hass: HomeAssistant,
 ) -> None:
     """Persist RGB UI color data when a legacy entry lacks the color dict."""
-    flow, entry = _options_flow(hass, selector_mode=COLOR_SELECTOR_RGB_UI)
-    flow._data.pop(CONF_COLOR_RGB_DICT)
+    flow, entry = _options_flow(
+        hass, selector_mode=COLOR_SELECTOR_RGB_UI, omit=(CONF_COLOR_RGB_DICT,)
+    )
 
     with patch.object(hass.config_entries, "async_reload", AsyncMock()):
         result = await flow.async_step_color_rgb_ui({CONF_COLOR: [255, 0, 0]})
@@ -477,14 +483,20 @@ async def test_options_rename_stops_previous_animation_before_reload(
 ) -> None:
     """Stop an active pre-rename animation before options update entry data."""
     manager = Animations(hass)
-    manager.animations["Spooky"] = cast("Animation", AsyncMock())
     Animations.instance = manager
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    await manager.start(
+        {
+            CONF_NAME: "Spooky",
+            CONF_LIGHTS: ["light.one"],
+            CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+            "change_frequency": 60,
+        }
+    )
     flow, entry = _options_flow(hass)
 
-    with (
-        patch.object(manager, "stop_by_name", AsyncMock()) as stop_by_name,
-        patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload_entry,
-    ):
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload_entry:
         scene_result = await flow.async_step_scene({CONF_NAME: "Scary"})
         result = await flow.async_step_color_yaml(
             {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]}
@@ -492,7 +504,8 @@ async def test_options_rename_stops_previous_animation_before_reload(
 
     assert scene_result["type"] == "form"
     assert scene_result["step_id"] == "color_yaml"
-    stop_by_name.assert_awaited_once_with("Spooky")
+    assert manager.animations == {}
+    assert animation_tasks("Spooky") == []
     reload_entry.assert_awaited_once_with("spooky")
     assert entry.title == "Scary"
     assert entry.data[CONF_NAME] == "Scary"
@@ -503,8 +516,7 @@ async def test_options_yaml_accepts_imported_legacy_platform(
     hass: HomeAssistant,
 ) -> None:
     """Ignore legacy YAML platform metadata during runtime validation."""
-    flow, entry = _options_flow(hass)
-    flow._data[CONF_PLATFORM] = DOMAIN
+    flow, entry = _options_flow(hass, extra={CONF_PLATFORM: DOMAIN})
 
     with patch.object(hass.config_entries, "async_reload", AsyncMock()):
         result = await flow.async_step_color_yaml(
@@ -555,3 +567,22 @@ async def test_options_yaml_logs_runtime_validation_error(
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_COLORS_MALFORMED}
     assert "Invalid YAML color payload" in caplog.text
+
+
+async def test_activity_sensor_duplicate_check_uses_config_entries(
+    hass: HomeAssistant,
+) -> None:
+    """Skip the activity-sensor menu when a config entry already provides it."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        title="Activity Sensor",
+        data={CONF_ENTITY_TYPE: ENTITY_ACTIVITY_SENSOR},
+        entry_id="activity",
+    ).add_to_hass(hass)
+    flow = AnimatedScenesConfigFlow()
+    flow.hass = hass
+
+    result = await flow.async_step_user()
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "scene"
