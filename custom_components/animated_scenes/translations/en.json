@@ -174,8 +174,7 @@
             "scene_name_exists": "An animated scene with this name already exists"
         },
         "abort": {
-            "activity_sensor_no_options": "&nbsp;\n\nNo options are available for the Animated Scenes Activity Sensor",
-            "integration_no_options": "&nbsp\n\nNo options are available for the Animated Scenes integration"
+            "activity_sensor_no_options": "&nbsp;\n\nNo options are available for the Animated Scenes Activity Sensor"
         }
     }
 }

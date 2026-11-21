@@ -18,7 +18,6 @@ from .scene_config import (
 from .service import add_lights_to_animation, remove_lights, start_animation, stop_animation
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-PLATFORMS: list = [Platform.SWITCH, Platform.SENSOR]
 
 
 async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:
@@ -40,25 +39,25 @@ async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:
         DOMAIN,
         "start_animation",
         start_animation,
-        schema=START_SERVICE_SCHEMA,
+        schema=START_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
     hass.services.async_register(
         DOMAIN,
         "stop_animation",
         stop_animation,
-        schema=STOP_SERVICE_SCHEMA,
+        schema=STOP_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
     hass.services.async_register(
         DOMAIN,
         "remove_lights",
         remove_lights,
-        schema=REMOVE_LIGHTS_SERVICE_SCHEMA,
+        schema=REMOVE_LIGHTS_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
     hass.services.async_register(
         DOMAIN,
         "add_lights_to_animation",
         add_lights_to_animation,
-        schema=ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA,
+        schema=ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
     Animations.instance = Animations(hass)
     return True

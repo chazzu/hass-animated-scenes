@@ -839,7 +839,6 @@ class Animations:
         self._external_light_listener: Callable[[], None] | None = None
         self._light_animations: dict[str, list[Animation]] = {}
         self.light_owner: dict[str, Animation] = {}
-        self._conflicted_lights: dict[str, Any] = {}
         self._mutation_lock = asyncio.Lock()
         self.hass: HomeAssistant = hass
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._async_handle_hass_stop)
@@ -933,13 +932,6 @@ class Animations:
             animation = self.refresh_animation_for_light(entity_id)
             if animation:
                 await animation.update_light(entity_id)
-
-    def get_animation_by_priority(self, priority: int) -> Animation | None:
-        """Return an animation with the given priority, if any."""
-        for animation in self.animations.values():
-            if animation.priority == priority:
-                return animation
-        return None
 
     def get_animation_for_light(self, entity_id: str) -> Animation | None:
         """Return the animation that currently owns a light, if any."""

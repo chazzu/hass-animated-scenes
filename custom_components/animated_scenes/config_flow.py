@@ -516,7 +516,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="scene",
-            data_schema=_build_schema(user_input, defaults),
+            data_schema=_build_schema(user_input, defaults),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
         )
 
@@ -544,7 +544,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
         return self.async_show_form(
             step_id="color_yaml",
-            data_schema=_build_color_yaml_schema(user_input, {}),
+            data_schema=_build_color_yaml_schema(user_input, {}),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
@@ -584,7 +584,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="color_rgb_ui",
-            data_schema=_build_color_rgb_ui_schema(user_input, RGB_UI_COLOR_DEFAULTS),
+            data_schema=_build_color_rgb_ui_schema(user_input, RGB_UI_COLOR_DEFAULTS),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
             description_placeholders={
                 "color_count": str(len(self._data.get(CONF_COLOR_RGB_DICT, {})) + 1),
@@ -675,7 +675,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
 
         return self.async_show_form(
             step_id="scene",
-            data_schema=_build_schema(user_input, self._data, options_flow=True),
+            data_schema=_build_schema(user_input, self._data, options_flow=True),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
             description_placeholders={"scene_name": self._data[CONF_NAME]},
         )
@@ -716,7 +716,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
 
         return self.async_show_form(
             step_id="color_yaml",
-            data_schema=_build_color_yaml_schema(user_input, self._data),
+            data_schema=_build_color_yaml_schema(user_input, self._data),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
@@ -781,7 +781,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
 
         return self.async_show_form(
             step_id="color_rgb_ui",
-            data_schema=_build_color_rgb_ui_schema(
+            data_schema=_build_color_rgb_ui_schema(  # type: ignore[arg-type, unused-ignore]
                 user_input,
                 color_data,
                 options_flow=True,

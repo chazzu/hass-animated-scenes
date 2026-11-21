@@ -7,7 +7,6 @@ COMPONENT_COLOR_CONFIG_URL = "https://github.com/chazzu/hass-animated-scenes#col
 
 ATTR_COLOR_TEMP = "color_temp"  # Deprecated by HASS, will auto-convert to ATTR_COLOR_TEMP_KELVIN
 
-CONF_EXTERNAL_SWITCHES = "external_switches"
 
 CONF_ANIMATE_BRIGHTNESS = "animate_brightness"
 CONF_ANIMATE_COLOR = "animate_color"
@@ -64,8 +63,6 @@ DEFAULT_COLOR_WEIGHT = 10
 DEFAULT_COLOR_ADD_COLOR = False
 DEFAULT_COLOR_DELETE_COLOR = False
 
-DEFAULT_MIN_BRIGHT = 70
-DEFAULT_MAX_BRIGHT = 100
 
 CHANGE_FREQUENCY_MIN = 0
 CHANGE_FREQUENCY_REPEAT_MIN = 0.1
@@ -89,7 +86,6 @@ ERROR_SCENE_NAME_BLANK = "scene_name_blank"
 ERROR_SCENE_NAME_EXISTS = "scene_name_exists"
 ABORT_ACTIVITY_SENSOR_NO_OPTIONS = "activity_sensor_no_options"
 ABORT_ACTIVITY_SENSOR_EXISTS = "activity_sensor_exists"
-ABORT_INTEGRATION_NO_OPTIONS = "integration_no_options"
 
 EVENT_NAME_CHANGE = "animated_scenes_change"
 EVENT_STATE_STARTED = "started"

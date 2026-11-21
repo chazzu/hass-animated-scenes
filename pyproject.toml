@@ -63,11 +63,6 @@ pretty = true
 show_error_codes = true
 warn_unused_configs = true
 
-# Home Assistant replaces voluptuous with its probatio shim at runtime in newer releases.
-[[tool.mypy.overrides]]
-module = ["voluptuous", "voluptuous.*"]
-follow_imports = "skip"
-
 [[tool.mypy.overrides]]
 module = ["pytest_homeassistant_custom_component.*"]
 follow_untyped_imports = true
