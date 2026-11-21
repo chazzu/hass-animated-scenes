@@ -27,7 +27,12 @@ def register_light_services(hass: HomeAssistant) -> list[dict[str, Any]]:
         calls.append(dict(call.data))
         for entity_id in call.data["entity_id"]:
             state = hass.states.get(entity_id)
-            hass.states.async_set(entity_id, "on", dict(state.attributes) if state else {})
+            hass.states.async_set(
+                entity_id,
+                "on",
+                dict(state.attributes) if state else {},
+                context=call.context,
+            )
 
     async def _turn_off(_: ServiceCall) -> None:
         """Accept a turn-off call."""

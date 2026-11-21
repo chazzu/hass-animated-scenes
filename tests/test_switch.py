@@ -167,8 +167,7 @@ async def test_switch_turn_on_stays_off_for_one_shot_scene(hass: HomeAssistant) 
     await switch.async_turn_on()
     await hass.async_block_till_done()
 
-    assert calls
-    assert all(call["entity_id"] == ["light.one"] for call in calls)
+    assert [call["entity_id"] for call in calls] == [["light.one"]]
     assert switch.is_on is False
     assert manager.animations == {}
 

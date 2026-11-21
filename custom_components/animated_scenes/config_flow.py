@@ -262,8 +262,7 @@ def _build_schema(
                 default=default(CONF_PRIORITY, DEFAULT_PRIORITY),
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=-100,
-                    max=100,
+                    step=1,
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),

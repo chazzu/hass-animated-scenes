@@ -100,6 +100,7 @@
             "scene": {
                 "title": "Animated Scenes",
                 "data": {
+                    "name": "Scene Name",
                     "priority": "Priority",
                     "transition": "Transition Duration",
                     "change_frequency": "Change Frequency",

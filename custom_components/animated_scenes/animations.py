@@ -2,8 +2,7 @@
 
 This module provides the Animation and Animations classes which manage
 running color/brightness animations for Home Assistant light entities.
-It also defines service schemas and helper functions used by the
-integration.
+It also provides color conversion helpers and safe light service calls.
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ from homeassistant.const import (
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
 )
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.core import Context, Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError, IntegrationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
@@ -97,6 +96,9 @@ type LightAttributes = dict[str, Any]
 type NumberRange = list[int] | list[float]
 type NumberConfig = int | float | NumberRange
 
+# Marks light changes made by this integration so they are not treated as external.
+ANIMATION_CONTEXT_PARENT_ID: str = Context().id
+
 RESTORE_COLOR_ATTRIBUTES: dict[ColorMode, str] = {
     ColorMode.COLOR_TEMP: ATTR_COLOR_TEMP_KELVIN,
     ColorMode.HS: ATTR_HS_COLOR,
@@ -138,7 +140,12 @@ async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) 
 
     """
     try:
-        await hass.services.async_call(domain, service, attr)
+        await hass.services.async_call(
+            domain,
+            service,
+            attr,
+            context=Context(parent_id=ANIMATION_CONTEXT_PARENT_ID),
+        )
     except (HomeAssistantError, vol.Invalid) as e:
         _LOGGER.warning("Received an error calling service. %s: %s", type(e).__name__, e)
 
@@ -633,11 +640,12 @@ class Animation:
         The configured change amount may be a fixed number a two-item
         range or 'all'; this helper returns a concrete numeric value.
         """
+        active_count = len(self._active_lights)
         if isinstance(self._change_amount, str):
             if self._change_amount == "all":
-                return len(self._active_lights)
+                return active_count
             return 0
-        return self.get_static_or_random(self._change_amount)
+        return min(self.get_static_or_random(self._change_amount), active_count)
 
     def get_change_frequency(self) -> float:
         """Return the change frequency (possibly randomized)."""
@@ -686,7 +694,7 @@ class Animation:
     def pick_lights(self, change_amount: int) -> list[str]:
         """Return a list of lights to change this tick.
 
-        If `ignore_off` is enabled the method filters out lights that are
+        If `ignore_off` is disabled the method filters out lights that are
         currently off when selecting a random subset.
         """
         change_amount = max(0, min(change_amount, len(self._active_lights)))
@@ -712,12 +720,16 @@ class Animation:
             for light in list(self._active_lights):
                 if Animations.instance:
                     await Animations.instance.release_light(
-                        self, light, skip_restore=light in self._restart_lights
+                        self,
+                        light,
+                        skip_restore=light in self._restart_lights,
+                        refresh=False,
                     )
         finally:
             if Animations.instance:
                 Animations.instance.release_animation(self)
-            self._hass.bus.fire(
+                Animations.instance.refresh_listener()
+            self._hass.bus.async_fire(
                 EVENT_NAME_CHANGE,
                 {"animation": self._name, "state": EVENT_STATE_STOPPED},
             )
@@ -803,7 +815,7 @@ class Animation:
                 name=f"animated_scenes_{self._name}",
                 eager_start=False,
             )
-            self._hass.bus.fire(
+            self._hass.bus.async_fire(
                 EVENT_NAME_CHANGE,
                 {"animation": self._name, "state": EVENT_STATE_STARTED},
             )
@@ -910,6 +922,9 @@ class Animations:
             None
 
         """
+        new_state = event.data.get("new_state")
+        if new_state is not None and new_state.context.parent_id == ANIMATION_CONTEXT_PARENT_ID:
+            return
         self.hass.async_create_task(self._handle_external_light_change(event))
 
     async def _handle_external_light_change(self, event: Event[EventStateChangedData]) -> None:
@@ -1042,7 +1057,7 @@ class Animations:
 
     def fire_animation_change(self, animation_name: str, state: str) -> None:
         """Notify Home Assistant that animation activity changed."""
-        self.hass.bus.fire(
+        self.hass.bus.async_fire(
             EVENT_NAME_CHANGE,
             {"animation": animation_name, "state": state},
         )
@@ -1069,10 +1084,9 @@ class Animations:
             )
 
     def release_animation(self, animation: Animation) -> None:
-        """Remove an animation from the active map and refresh listeners."""
+        """Remove an animation from the active map."""
         if self.animations.get(animation.name) is animation:
             self.animations.pop(animation.name, None)
-            self.refresh_listener()
 
     async def release_light(
         self,
@@ -1080,11 +1094,23 @@ class Animations:
         entity_id: str,
         skip_ownership: bool = False,
         skip_restore: bool = False,
+        refresh: bool = True,
     ) -> None:
         """Release ownership of a light for a given animation.
 
         This handles handing ownership to another animation, restoring
         the previous state, and cleaning up stored state.
+
+        Args:
+            animation: Animation releasing the light.
+            entity_id: Light entity id to release.
+            skip_ownership: Skip handing the light to another animation.
+            skip_restore: Skip restoring the stored light state.
+            refresh: Rebuild the state listener after releasing this light.
+
+        Returns:
+            None
+
         """
         animations_for_light = self._light_animations.get(entity_id, [])
         if animation in animations_for_light:
@@ -1124,7 +1150,8 @@ class Animations:
         self.light_owner.pop(entity_id, None)
         if not animations_for_light:
             self._light_animations.pop(entity_id, None)
-        self.refresh_listener()
+        if refresh:
+            self.refresh_listener()
         return
 
     async def add_lights_to_animation(self, data: dict[str, Any]) -> None:
@@ -1223,12 +1250,12 @@ class Animations:
                 animation.remove_light(light)
             self._light_animations.pop(light, None)
             if owner is not None:
-                updates.append(self.release_light(owner, light, True, skip_restore))
+                updates.append(self.release_light(owner, light, True, skip_restore, refresh=False))
             elif tracked_animations:
                 self.states.pop(light, None)
-                self.refresh_listener()
 
         await asyncio.gather(*updates)
+        self.refresh_listener()
         for animation in affected_animations:
             if len(animation.get_active_lights()) == 0:
                 await animation.stop()

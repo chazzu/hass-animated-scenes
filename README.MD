@@ -212,6 +212,8 @@ The `name` is the animation ID. Use the same name to stop it later.
 
 `start_animation` and new UI scenes share the same defaults: `priority: 100`, `restore_power: true`, and `change_amount: 1`. Existing scenes keep their saved values.
 
+The top-level `brightness` applies when `animate_brightness` is off. When it is on, each color uses its own brightness.
+
 ### Stop An Animation
 
 ```yaml
@@ -267,7 +269,8 @@ Animated Scenes validates UI configuration and service calls before starting an 
 | --- | --- |
 | `transition` | `0` to `6553` seconds, or a two-item range like `[0.5, 2]`. |
 | `change_frequency` | Scalar `0` performs one initial update and immediately releases. Repeating values and both bounds of a range such as `[0.1, 1.5]` must be `0.1` through `3600` seconds. A range starting at `0` is treated as starting at `0.1`. |
-| `change_amount` | An integer, a two-item range like `[1, 3]`, or `all`. |
+| `priority` | Any whole number. |
+| `change_amount` | An integer, a two-item range like `[1, 3]`, or `all`. Values above the active light count change every active light without replacing the saved value. |
 | `brightness` | `0` to `255`, or a two-item range like `[70, 255]`. |
 | `colors` | At least one color is required. |
 | `lights` | At least one light is required. |

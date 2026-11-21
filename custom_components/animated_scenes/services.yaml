@@ -17,8 +17,18 @@ start_animation:
       default: 100
       selector:
         number:
-          min: -100
-          max: 100
+          step: 1
+          mode: box
+    brightness:
+      name: Brightness
+      description: Brightness used when Animate Brightness is off. When it is on, each color uses its own brightness.
+      required: False
+      example: 255
+      default: 255
+      selector:
+        number:
+          min: 0
+          max: 255
           step: 1
     transition:
       name: Transition

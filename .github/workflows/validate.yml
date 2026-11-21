@@ -8,6 +8,9 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+
 jobs:
   ha_validation:
     name: Hassfest Validation

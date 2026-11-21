@@ -46,23 +46,15 @@ def _base_input() -> dict[str, object]:
     }
 
 
-def test_normalize_scene_input_clamps_change_amount_to_all() -> None:
-    """Normalize change_amount larger than selected lights to all."""
-    result = normalize_scene_input(_base_input())
-
-    assert result[CONF_CHANGE_AMOUNT] == "all"
-
-
-def test_normalize_scene_input_clamps_change_amount_range_without_mutating_input() -> None:
-    """Clamp oversized change_amount ranges without mutating caller data."""
+@pytest.mark.parametrize("change_amount", [5, [1, 3]], ids=["number", "range"])
+def test_normalize_scene_input_preserves_oversized_change_amount(
+    change_amount: int | list[int],
+) -> None:
+    """Keep the saved amount so lights added later can use it."""
     data = _base_input()
-    change_amount = [1, 3]
     data[CONF_CHANGE_AMOUNT] = change_amount
 
-    result = normalize_scene_input(data)
-
-    assert result[CONF_CHANGE_AMOUNT] == [1, 2]
-    assert change_amount == [1, 3]
+    assert normalize_scene_input(data)[CONF_CHANGE_AMOUNT] == change_amount
 
 
 def test_normalize_scene_input_adds_defaults() -> None:
@@ -151,7 +143,7 @@ def test_validate_start_service_data_accepts_normalized_scene_data() -> None:
     result = validate_start_service_data(normalize_scene_input(_base_input()))
 
     assert result[CONF_NAME] == "Spooky"
-    assert result[CONF_CHANGE_AMOUNT] == "all"
+    assert result[CONF_CHANGE_AMOUNT] == 3
 
 
 def test_validate_start_service_data_accepts_templated_numeric_strings() -> None:

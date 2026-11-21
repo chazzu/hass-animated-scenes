@@ -13,7 +13,13 @@ from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import IntegrationError
 from homeassistant.helpers import entity_registry as er
-from homeassistant.util.color import color_temperature_to_rgb
+from homeassistant.util.color import (
+    color_hs_to_RGB,
+    color_rgbw_to_rgb,
+    color_rgbww_to_rgb,
+    color_temperature_to_rgb,
+    color_xy_to_RGB,
+)
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -42,6 +48,8 @@ from custom_components.animated_scenes.const import (
     ENTITY_SCENE,
     EVENT_NAME_CHANGE,
     EVENT_STATE_UPDATED,
+    MAX_KELVIN,
+    MIN_KELVIN,
 )
 
 from .helpers import animation_tasks, register_light_services
@@ -777,8 +785,28 @@ async def test_unload_keeps_animation_when_platform_unload_fails(
         ),
         ({"color_mode": "onoff"}, {}),
         ({"color_mode": "white", "brightness": 100}, {"white": 100}),
+        (
+            {"color_mode": "hs", "brightness": 100, "hs_color": (10.0, 20.0)},
+            {"brightness": 100, "hs_color": (10.0, 20.0)},
+        ),
+        (
+            {"color_mode": "xy", "brightness": 100, "xy_color": (0.3, 0.4)},
+            {"brightness": 100, "xy_color": (0.3, 0.4)},
+        ),
+        (
+            {"color_mode": "rgbw", "brightness": 100, "rgbw_color": (1, 2, 3, 4)},
+            {"brightness": 100, "rgbw_color": (1, 2, 3, 4)},
+        ),
+        (
+            {"color_mode": "rgbww", "brightness": 100, "rgbww_color": (1, 2, 3, 4, 5)},
+            {"brightness": 100, "rgbww_color": (1, 2, 3, 4, 5)},
+        ),
+        (
+            {"brightness": 100, "rgb_color": (1, 2, 3)},
+            {"brightness": 100, "rgb_color": (1, 2, 3)},
+        ),
     ],
-    ids=["color_temp", "onoff", "white"],
+    ids=["color_temp", "onoff", "white", "hs", "xy", "rgbw", "rgbww", "no_color_mode"],
 )
 async def test_stop_restores_each_color_mode_and_allows_restart(
     hass: HomeAssistant, attributes: dict[str, Any], expected: dict[str, Any]
@@ -915,4 +943,150 @@ async def test_external_turn_on_updates_light_from_event_loop(hass: HomeAssistan
     await hass.async_block_till_done()
 
     assert [call["rgb_color"] for call in calls] == [(255, 0, 0)]
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
+def _to_rgb(color_type: str, value: Any) -> tuple[float, float, float]:
+    """Convert a light color value to RGB for proximity assertions."""
+    if color_type == "rgbw_color":
+        return color_rgbw_to_rgb(*value)
+    if color_type == "rgbww_color":
+        red, green, blue, cold_white, warm_white = value
+        return color_rgbww_to_rgb(red, green, blue, cold_white, warm_white, MIN_KELVIN, MAX_KELVIN)
+    if color_type == "hs_color":
+        return color_hs_to_RGB(*value)
+    if color_type == "xy_color":
+        return color_xy_to_RGB(*value)
+    return color_temperature_to_rgb(value)
+
+
+@pytest.mark.parametrize(
+    ("color_type", "value"),
+    [
+        ("rgbw_color", (200, 80, 40, 0)),
+        ("rgbww_color", (200, 80, 40, 0, 0)),
+        ("hs_color", (20.0, 80.0)),
+        ("xy_color", (0.5, 0.4)),
+        ("color_temp_kelvin", 3000),
+    ],
+    ids=["rgbw", "rgbww", "hs", "xy", "kelvin"],
+)
+async def test_nearby_color_sends_valid_nearby_value(
+    hass: HomeAssistant, color_type: str, value: Any
+) -> None:
+    """Send a nearby color in its original format through the light schema."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+
+    with patch(
+        "custom_components.animated_scenes.animations.uniform",
+        side_effect=lambda low, _high: low,
+    ):
+        await _start(
+            manager,
+            "Spooky",
+            ["light.one"],
+            colors=[{"color_type": color_type, "color": value, "nearby_colors": 1, "weight": 10}],
+        )
+        await hass.async_block_till_done()
+
+    sent = calls[0][color_type]
+    source_rgb = _to_rgb(color_type, value)
+    sent_rgb = _to_rgb(color_type, sent)
+    assert all(abs(a - b) <= 40 for a, b in zip(source_rgb, sent_rgb, strict=True))
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
+@pytest.mark.parametrize(
+    ("mireds", "expected_kelvin"),
+    [(370, 2702), (1000, MIN_KELVIN), (1, MAX_KELVIN)],
+    ids=["ordinary", "clamped_warm", "clamped_cool"],
+)
+async def test_mired_colors_are_sent_as_bounded_kelvin(
+    hass: HomeAssistant, mireds: int, expected_kelvin: int
+) -> None:
+    """Convert legacy mired colors to the Kelvin field Home Assistant accepts."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+
+    await _start(
+        manager,
+        "Spooky",
+        ["light.one"],
+        colors=[{"color_type": "color_temp", "color": mireds, "weight": 10}],
+    )
+    await hass.async_block_till_done()
+
+    assert calls[0]["color_temp_kelvin"] == expected_kelvin
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
+async def test_starting_off_light_sends_one_initial_update(hass: HomeAssistant) -> None:
+    """Do not treat the scene's own turn-on as an external light change."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "off")
+
+    await _start(manager, "Spooky", ["light.one"])
+    await hass.async_block_till_done()
+
+    assert len(calls) == 2  # Initial update plus the loop's first tick.
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
+async def test_oversized_change_amount_applies_to_lights_added_later(
+    hass: HomeAssistant,
+) -> None:
+    """Use the configured amount once enough active lights exist."""
+    manager = _runtime_manager(hass)
+    register_light_services(hass)
+    for light in ("light.one", "light.two", "light.three"):
+        hass.states.async_set(light, "on", LIGHT_ON)
+    animation = await _start(manager, "Spooky", ["light.one"], change_amount=2)
+    assert animation.get_change_amount() == 1
+
+    await manager.add_lights_to_animation(
+        {CONF_NAME: "Spooky", CONF_LIGHTS: ["light.two", "light.three"]}
+    )
+
+    assert animation.get_change_amount() == 2
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
+@pytest.mark.parametrize(
+    ("data", "message"),
+    [
+        (
+            {CONF_NAME: "Spooky", CONF_ANIMATED_SCENE_SWITCH: "switch.spooky"},
+            "must be listed but not both",
+        ),
+        ({}, "must be listed but not both"),
+        ({CONF_NAME: "Stopped"}, "is not running"),
+    ],
+    ids=["both", "neither", "not_running"],
+)
+async def test_add_lights_rejects_invalid_targets(
+    hass: HomeAssistant, data: dict[str, str], message: str
+) -> None:
+    """Report invalid animation targets with a clear integration error."""
+    manager = _runtime_manager(hass)
+
+    with pytest.raises(IntegrationError, match=message):
+        await manager.add_lights_to_animation({**data, CONF_LIGHTS: ["light.one"]})
+
+
+async def test_static_brightness_applies_when_brightness_is_not_animated(
+    hass: HomeAssistant,
+) -> None:
+    """Use the documented top-level brightness when animation is disabled."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+
+    await _start(manager, "Spooky", ["light.one"], animate_brightness=False, brightness=50)
+    await hass.async_block_till_done()
+
+    assert calls[0]["brightness"] == 50
     await manager.stop({CONF_NAME: "Spooky"})

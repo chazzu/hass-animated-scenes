@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from homeassistant.const import CONF_BRIGHTNESS, CONF_LIGHTS, CONF_NAME
@@ -47,6 +49,14 @@ from custom_components.animated_scenes.scene_config import (
 )
 
 from .helpers import animation_tasks, register_light_services
+
+TRANSLATIONS_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "custom_components"
+    / "animated_scenes"
+    / "translations"
+    / "en.json"
+)
 
 
 def _schema_has_key(data_schema: object, key: str) -> bool:
@@ -586,3 +596,17 @@ async def test_activity_sensor_duplicate_check_uses_config_entries(
 
     assert result["type"] == "form"
     assert result["step_id"] == "scene"
+
+
+async def test_options_scene_form_fields_have_labels(hass: HomeAssistant) -> None:
+    """Give every options field a translated label instead of a raw key."""
+    flow, _ = _options_flow(hass)
+    translations = json.loads(TRANSLATIONS_PATH.read_text(encoding="utf-8"))
+    labels = translations["options"]["step"]["scene"]["data"]
+
+    result = await flow.async_step_init()
+
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    fields = {str(marker) for marker in data_schema.schema}
+    assert fields <= set(labels)

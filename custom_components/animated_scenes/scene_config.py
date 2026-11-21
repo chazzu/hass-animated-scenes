@@ -514,17 +514,6 @@ def is_int_list_or_all(
     return False, value
 
 
-def override_max_change_amount(value: Any, light_count: int) -> Any:
-    """Clamp change_amount to the selected light count."""
-    if isinstance(value, int) and value > light_count:
-        return "all"
-    if isinstance(value, list) and value[1] > light_count:
-        if value[0] >= light_count:
-            return "all"
-        return [value[0], light_count]
-    return value
-
-
 def normalize_scene_input(data: dict[str, Any]) -> dict[str, Any]:
     """Normalize config-flow or service scene data and raise vol.Invalid on errors."""
     normalized = dict(data)
@@ -544,7 +533,7 @@ def normalize_scene_input(data: dict[str, Any]) -> dict[str, Any]:
     )
     if not change_ok:
         raise vol.Invalid(ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL)
-    normalized[CONF_CHANGE_AMOUNT] = override_max_change_amount(change_value, len(lights))
+    normalized[CONF_CHANGE_AMOUNT] = change_value
 
     transition_ok, transition_value = is_number_or_list(
         normalized.get(CONF_TRANSITION), TRANSITION_MIN, TRANSITION_MAX
