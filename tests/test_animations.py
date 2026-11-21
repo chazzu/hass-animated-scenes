@@ -733,6 +733,23 @@ async def test_legacy_scene_migrates_runs_and_unloads(hass: HomeAssistant) -> No
     assert manager.animations == {}
 
 
+async def test_stored_zero_start_frequency_range_still_runs(hass: HomeAssistant) -> None:
+    """Keep an upgraded scene with a zero-start range running from its switch."""
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    await _setup_scene_entry(hass, {**_full_scene_data(), "change_frequency": [0, 5]})
+    manager = Animations.instance
+    assert manager is not None
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
+    )
+
+    animation = manager.animations["Spooky"]
+    assert all(0.1 <= animation.get_change_frequency() <= 5 for _ in range(50))
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
 async def test_unload_keeps_animation_when_platform_unload_fails(
     hass: HomeAssistant,
 ) -> None:

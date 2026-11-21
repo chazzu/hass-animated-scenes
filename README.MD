@@ -59,7 +59,7 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 | `name` | The scene name. This is also the animation name used by services. |
 | `priority` | Higher-priority animations win when multiple animations want the same light. |
 | `transition` | How long each light transition takes, in seconds. |
-| `change_frequency` | Use scalar `0` for one initial update followed by immediate release. Repeating values and both range bounds must be `0.1` through `3600` seconds. |
+| `change_frequency` | Use scalar `0` for one initial update followed by immediate release. Repeating values and both range bounds must be `0.1` through `3600` seconds. A range starting at `0` is treated as starting at `0.1`. |
 | `change_amount` | How many lights change each tick. Use a number, a range like `[1, 3]`, or `all`. |
 | `ignore_off` | When enabled, the animation ignores the current off state and includes those lights. When disabled, lights that are off are skipped. |
 | `restore` | Restore previous light state when the animation ends. |
@@ -264,7 +264,7 @@ Animated Scenes validates UI configuration and service calls before starting an 
 | Field | Allowed values |
 | --- | --- |
 | `transition` | `0` to `6553` seconds, or a two-item range like `[0.5, 2]`. |
-| `change_frequency` | Scalar `0` performs one initial update and immediately releases. Repeating values and both bounds of a range such as `[0.1, 1.5]` must be `0.1` through `3600` seconds. |
+| `change_frequency` | Scalar `0` performs one initial update and immediately releases. Repeating values and both bounds of a range such as `[0.1, 1.5]` must be `0.1` through `3600` seconds. A range starting at `0` is treated as starting at `0.1`. |
 | `change_amount` | An integer, a two-item range like `[1, 3]`, or `all`. |
 | `brightness` | `0` to `255`, or a two-item range like `[70, 255]`. |
 | `colors` | At least one color is required. |

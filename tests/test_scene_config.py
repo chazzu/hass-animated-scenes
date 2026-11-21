@@ -25,6 +25,7 @@ from custom_components.animated_scenes.const import (
     DEFAULT_RESTORE_POWER,
 )
 from custom_components.animated_scenes.scene_config import (
+    START_SERVICE_SCHEMA,
     build_colors_from_rgb_dict,
     clean_color_rgb_dict,
     normalize_scene_input,
@@ -230,7 +231,7 @@ def test_validate_start_service_data_accepts_safe_repeating_frequency(
 
 @pytest.mark.parametrize(
     CONF_CHANGE_FREQUENCY,
-    [0.01, "0.01", (0, 0.1), "[0, 0.1]", (0.01, 0.09), "[0.01, 0.09]"],
+    [0.01, "0.01", (0.01, 0.09), "[0.01, 0.09]"],
 )
 def test_normalize_scene_input_rejects_unsafe_repeating_frequency(
     change_frequency: object,
@@ -245,7 +246,7 @@ def test_normalize_scene_input_rejects_unsafe_repeating_frequency(
 
 @pytest.mark.parametrize(
     CONF_CHANGE_FREQUENCY,
-    [0.01, "0.01", (0, 0.1), "[0, 0.1]", (0.01, 0.09), "[0.01, 0.09]"],
+    [0.01, "0.01", (0.01, 0.09), "[0.01, 0.09]"],
 )
 def test_validate_start_service_data_rejects_unsafe_repeating_frequency(
     change_frequency: object,
@@ -542,3 +543,27 @@ def test_validate_start_service_data_sorts_color_brightness_range(brightness: ob
     result = validate_start_service_data(data)
 
     assert result["colors"][0][CONF_BRIGHTNESS] == [100, 200]
+
+
+@pytest.mark.parametrize(
+    ("change_frequency", "normalized", "service_value"),
+    [
+        ([0, 5], [0.1, 5.0], [0.1, 5.0]),
+        ((5, 0), [0.1, 5.0], [0.1, 5.0]),
+        ("[0, 5]", [0.1, 5.0], [0.1, 5.0]),
+        ([0, 0], 0.1, [0.1, 0.1]),
+    ],
+    ids=["list", "reversed", "text", "both_zero"],
+)
+def test_zero_frequency_range_starts_at_repeat_minimum(
+    change_frequency: object, normalized: float | list[float], service_value: list[float]
+) -> None:
+    """Keep legacy zero-start ranges running without a zero-second delay."""
+    data = _base_input()
+    data[CONF_CHANGE_FREQUENCY] = change_frequency
+
+    assert normalize_scene_input(data)[CONF_CHANGE_FREQUENCY] == normalized
+    service_data = _base_input()
+    service_data[CONF_CHANGE_FREQUENCY] = change_frequency
+    service_data["colors"] = [{"color_type": "rgb_color", "color": [255, 0, 0]}]
+    assert START_SERVICE_SCHEMA(service_data)[CONF_CHANGE_FREQUENCY] == service_value

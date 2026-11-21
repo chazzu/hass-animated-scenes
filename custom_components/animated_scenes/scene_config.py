@@ -140,6 +140,39 @@ def _priority_to_int(value: Any) -> int:
         raise vol.Invalid(ERROR_PRIORITY_NOT_INT) from err
 
 
+def _lift_zero_frequency_range(value: Any) -> Any:
+    """Replace a zero bound in a frequency range with the repeating minimum.
+
+    Older versions accepted ranges such as ``[0, 5]``. A selected delay of zero
+    would update lights without pausing, so those ranges start at the minimum.
+
+    Args:
+        value: Raw scalar, sequence, or bracketed-string frequency value.
+
+    Returns:
+        A sorted numeric range when a range's lower bound is zero, otherwise
+        the unchanged value for normal validation.
+
+    """
+    items = value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not (stripped.startswith("[") and stripped.endswith("]") and stripped.count(",") == 1):
+            return value
+        items = _strlist_to_list(stripped)
+    if not isinstance(items, list | tuple) or len(items) != 2:
+        return value
+    try:
+        bounds = [float(item) for item in items]
+    except TypeError, ValueError:
+        return value
+    if min(bounds) != CHANGE_FREQUENCY_MIN:
+        return value
+    return sorted(
+        CHANGE_FREQUENCY_REPEAT_MIN if bound == CHANGE_FREQUENCY_MIN else bound for bound in bounds
+    )
+
+
 BRIGHTNESS_VALUE_SCHEMA = vol.All(
     vol.Coerce(float),
     _whole_float_to_int,
@@ -195,19 +228,22 @@ TRANSITION_RANGE_SCHEMA = vol.Any(
         vol.ExactSequence((TRANSITION_VALUE_SCHEMA, TRANSITION_VALUE_SCHEMA)),
     ),
 )
-CHANGE_FREQUENCY_RANGE_SCHEMA = vol.Any(
-    CHANGE_FREQUENCY_VALUE_SCHEMA,
-    vol.ExactSequence(
-        (
-            CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA,
-            CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA,
-        )
-    ),
-    vol.All(
-        vol.Match(NUMBER_RANGE_PATTERN),
-        _strlist_to_list,
+CHANGE_FREQUENCY_RANGE_SCHEMA = vol.All(
+    _lift_zero_frequency_range,
+    vol.Any(
+        CHANGE_FREQUENCY_VALUE_SCHEMA,
         vol.ExactSequence(
-            (CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA, CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA)
+            (
+                CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA,
+                CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA,
+            )
+        ),
+        vol.All(
+            vol.Match(NUMBER_RANGE_PATTERN),
+            _strlist_to_list,
+            vol.ExactSequence(
+                (CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA, CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA)
+            ),
         ),
     ),
 )
@@ -517,7 +553,7 @@ def normalize_scene_input(data: dict[str, Any]) -> dict[str, Any]:
         raise vol.Invalid(ERROR_TRANSITION_NOT_INT_OR_RANGE)
     normalized[CONF_TRANSITION] = transition_value
 
-    raw_frequency = normalized.get(CONF_CHANGE_FREQUENCY)
+    raw_frequency = _lift_zero_frequency_range(normalized.get(CONF_CHANGE_FREQUENCY))
     scalar_ok, scalar_frequency = is_number(raw_frequency)
     if scalar_ok and scalar_frequency == CHANGE_FREQUENCY_MIN:
         frequency_ok, frequency_value = True, scalar_frequency
