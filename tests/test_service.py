@@ -77,7 +77,7 @@ async def test_service_lifecycle_controls_lights(hass: HomeAssistant) -> None:
     assert animation_tasks("Spooky") == []
 
 
-async def test_start_service_keeps_legacy_defaults_for_omitted_fields(
+async def test_start_service_uses_shared_defaults_for_omitted_fields(
     hass: HomeAssistant,
 ) -> None:
     """Keep existing automations unchanged when they omit optional fields."""

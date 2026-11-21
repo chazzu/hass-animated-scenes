@@ -567,3 +567,19 @@ def test_zero_frequency_range_starts_at_repeat_minimum(
     service_data[CONF_CHANGE_FREQUENCY] = change_frequency
     service_data["colors"] = [{"color_type": "rgb_color", "color": [255, 0, 0]}]
     assert START_SERVICE_SCHEMA(service_data)[CONF_CHANGE_FREQUENCY] == service_value
+
+
+def test_new_scene_and_service_defaults_match_legacy_runtime() -> None:
+    """Use one compatible default standard for UI scenes and service calls."""
+    expected = {"priority": 100, "restore_power": True, "change_amount": 1}
+    scene = normalize_scene_input({CONF_NAME: "Scene", CONF_LIGHTS: ["light.one"]})
+    service = START_SERVICE_SCHEMA(
+        {
+            CONF_NAME: "Service",
+            CONF_LIGHTS: ["light.one"],
+            "colors": [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+        }
+    )
+
+    assert {key: scene[key] for key in expected} == expected
+    assert {key: service[key] for key in expected} == expected
