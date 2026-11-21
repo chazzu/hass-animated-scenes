@@ -927,6 +927,39 @@ async def test_priority_handoff_applies_color_then_restores_original(
     assert manager.light_owner == {}
 
 
+async def test_priority_handoff_applies_color_despite_one_change_per_tick(
+    hass: HomeAssistant,
+) -> None:
+    """Send the returning scene's color on handoff even if a tick would change brightness only."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    await _start(
+        manager,
+        "Low",
+        ["light.one"],
+        priority=1,
+        animate_color=False,
+        colors=[
+            {
+                "color_type": "rgb_color",
+                "color": (0, 255, 0),
+                "brightness": 50,
+                "one_change_per_tick": True,
+            }
+        ],
+    )
+    await _start(manager, "High", ["light.one"], priority=10)
+    calls.clear()
+
+    with patch("custom_components.animated_scenes.animations.randrange", return_value=2):
+        await manager.stop({CONF_NAME: "High"})
+        await hass.async_block_till_done()
+
+    assert [call["rgb_color"] for call in calls] == [(0, 255, 0)]
+    await manager.stop({CONF_NAME: "Low"})
+
+
 async def test_external_turn_on_updates_light_from_event_loop(hass: HomeAssistant) -> None:
     """Re-apply the animation when a tracked light is turned back on."""
     manager = _runtime_manager(hass)

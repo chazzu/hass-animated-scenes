@@ -350,14 +350,15 @@ class Animation:
         Args:
             light: The entity id of the light to update.
             initial: If True, mark this as the initial update for the
-                animation (affects whether colors/brightness are applied).
+                animation. Initial updates always apply the color and skip
+                the one-change-per-tick brightness-only shortcut.
 
         Returns:
             A mapping containing service data like entity_id, transition,
             brightness and color attributes appropriate for the light.
 
         """
-        if light in self._light_status and self._light_status[light]["change_one"]:
+        if not initial and light in self._light_status and self._light_status[light]["change_one"]:
             color_or_brightness: int = randrange(1, 3, 1)
             if color_or_brightness == 2:
                 return {
