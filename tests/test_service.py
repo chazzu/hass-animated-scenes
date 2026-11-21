@@ -105,3 +105,33 @@ async def test_start_service_uses_shared_defaults_for_omitted_fields(
     assert animation.restore_power is True
     assert animation.get_change_amount() == 1
     await manager.stop({CONF_NAME: "Spooky"})
+
+
+async def test_start_service_accepts_tuple_ranges(hass: HomeAssistant) -> None:
+    """Start an animation from tuple ranges, as automations can supply them."""
+    await async_setup(hass, {})
+    manager = Animations.instance
+    assert manager is not None
+    register_light_services(hass)
+    for light in ("light.one", "light.two"):
+        hass.states.async_set(light, "on", ORIGINAL)
+
+    await hass.services.async_call(
+        DOMAIN,
+        "start_animation",
+        {
+            CONF_NAME: "Spooky",
+            CONF_LIGHTS: ["light.one", "light.two"],
+            "colors": COLORS,
+            "change_frequency": (1800, 3600),
+            "transition": (1, 2),
+            "change_amount": (1, 2),
+        },
+        blocking=True,
+    )
+
+    animation = manager.animations["Spooky"]
+    assert 1800 <= animation.get_change_frequency() <= 3600
+    assert 1 <= animation.get_transition() <= 2
+    assert 1 <= animation.get_change_amount() <= 2
+    await manager.stop({CONF_NAME: "Spooky"})

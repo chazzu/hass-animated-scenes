@@ -29,8 +29,10 @@ jobs:
         with:
           # Release events must package the release tag instead of a moving
           # target_commitish branch.
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event_name == 'release' && format('refs/tags/{0}', github.event.release.tag_name) || github.ref }}
           path: release-payload
+          # The branch write-back needs full history for its ancestor check.
+          fetch-depth: 0
 
       - name: Update Release Version Files
         if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
@@ -75,22 +77,30 @@ jobs:
           files: ./animated_scenes.zip
           tag_name: ${{ github.event.release.tag_name }}
 
-      - name: Commit & Push Version Changes
-        if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false && steps.release-target.outputs.is_branch == 'true' }}
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          repository: release-payload
-          branch: ${{ steps.release-target.outputs.branch }}
-          commit_message: 'Updating to version ${{ github.event.release.tag_name }} [skip ci]'
-
-      - name: Update Release with Version Changes Commit
+      - name: Commit Version and Update Release Refs
         if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false && steps.release-target.outputs.is_branch == 'true' }}
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
+          BRANCH: ${{ steps.release-target.outputs.branch }}
         working-directory: release-payload
         run: |
-          git tag -f "$TAG_NAME"
-          git push -f origin "$TAG_NAME"
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            custom_components/animated_scenes/manifest.json \
+            custom_components/animated_scenes/const.py
+          if ! git diff --cached --quiet; then
+            git commit -m "Updating to version $TAG_NAME [skip ci]"
+          fi
+          git tag -f "$TAG_NAME" HEAD
+          git push -f origin "refs/tags/$TAG_NAME"
+          git fetch origin "refs/heads/$BRANCH"
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            git push origin "HEAD:refs/heads/$BRANCH"
+          else
+            echo "::warning::$BRANCH moved past the release commit; skipped the version write-back."
+          fi
 
       - name: Add Zip to Action
         if: ${{ github.event_name == 'workflow_dispatch' }}

@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.animated_scenes.animations import Animations
 from custom_components.animated_scenes.const import (
@@ -24,7 +25,11 @@ from custom_components.animated_scenes.const import (
     EVENT_STATE_STOPPED,
     INTEGRATION_NAME,
 )
-from custom_components.animated_scenes.switch import AnimatedSceneSwitch, async_setup_platform
+from custom_components.animated_scenes.switch import (
+    PLATFORM_SCHEMA,
+    AnimatedSceneSwitch,
+    async_setup_platform,
+)
 
 from .helpers import register_light_services
 
@@ -188,3 +193,27 @@ async def test_switch_rejects_empty_rgb_ui_colors_before_animation_loop(
     assert switch.is_on is False
     assert manager.animations == {}
     assert "Failed to start animated scene Spooky" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("change_sequence", "weight", "accepted"),
+    [(False, 0, False), (True, 0, True), (False, 5, True)],
+    ids=["random_zero_rejected", "sequence_zero_accepted", "random_positive_accepted"],
+)
+def test_platform_schema_checks_color_weights_for_random_mode(
+    change_sequence: bool, weight: int, accepted: bool
+) -> None:
+    """Reject unusable random-mode weights when a legacy YAML scene is validated."""
+    config = {
+        "platform": DOMAIN,
+        "name": "Spooky",
+        "lights": ["light.one"],
+        "change_sequence": change_sequence,
+        "colors": [{"color_type": "rgb_color", "color": [255, 0, 0], "weight": weight}],
+    }
+
+    if accepted:
+        assert PLATFORM_SCHEMA(config)["change_sequence"] is change_sequence
+    else:
+        with pytest.raises(vol.Invalid, match="colors_malformed"):
+            PLATFORM_SCHEMA(config)

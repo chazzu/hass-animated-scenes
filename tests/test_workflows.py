@@ -9,10 +9,7 @@ import pytest
 import yaml
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
-RELEASE_MUTATION_STEPS = (
-    "Commit & Push Version Changes",
-    "Update Release with Version Changes Commit",
-)
+RELEASE_MUTATION_STEP = "Commit Version and Update Release Refs"
 
 
 def _job(workflow: str, job: str) -> dict[str, Any]:
@@ -40,12 +37,26 @@ def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
     return next(step for step in job["steps"] if step.get("name") == name)
 
 
-def test_job_running_pr_code_has_no_write_token() -> None:
-    """Keep write access and persisted credentials away from pull request code."""
-    job = _job("pytest_coverage.yml", "tests")
+@pytest.mark.parametrize(
+    ("job_name", "persisted"),
+    [("tests", False), ("publish-coverage-data", True)],
+)
+def test_only_coverage_publication_persists_credentials(job_name: str, persisted: bool) -> None:
+    """Persist checkout credentials only for the trusted coverage push job.
 
-    assert _write_scopes(job) == set()
-    assert _step(job, "Checkout Repository")["with"]["persist-credentials"] is False
+    Args:
+        job_name: Job id inside the coverage workflow.
+        persisted: Whether the job's checkout should keep credentials.
+
+    """
+    job = _job("pytest_coverage.yml", job_name)
+
+    assert _step(job, "Checkout Repository")["with"]["persist-credentials"] is persisted
+
+
+def test_job_running_pr_code_has_no_write_token() -> None:
+    """Keep write access away from pull request code."""
+    assert _write_scopes(_job("pytest_coverage.yml", "tests")) == set()
 
 
 def test_coverage_publication_is_isolated_to_trusted_pushes() -> None:
@@ -66,15 +77,26 @@ def test_privileged_comment_workflow_never_checks_out_pr_code() -> None:
     assert not [step for step in job["steps"] if "actions/checkout" in step.get("uses", "")]
 
 
-@pytest.mark.parametrize("step_name", RELEASE_MUTATION_STEPS)
-def test_release_moves_refs_only_for_published_branch_targets(step_name: str) -> None:
+def test_release_checks_out_full_history_at_tag_ref() -> None:
+    """Resolve release events to the tag namespace with history for ancestry checks."""
+    checkout = _step(_job("release.yml", "update_version_and_create_zip"), "Checkout Repository")
+
+    assert "format('refs/tags/{0}', github.event.release.tag_name)" in checkout["with"]["ref"]
+    assert "github.ref" in checkout["with"]["ref"]
+    assert checkout["with"]["fetch-depth"] == 0
+
+
+def test_release_moves_refs_only_for_published_branch_targets() -> None:
     """Skip version commits and retags for edits, drafts, prereleases, and SHAs."""
-    condition = _step(_job("release.yml", "update_version_and_create_zip"), step_name)["if"]
+    step = _step(_job("release.yml", "update_version_and_create_zip"), RELEASE_MUTATION_STEP)
+    condition = step["if"]
 
     assert "github.event.action == 'published'" in condition
     assert "github.event.release.draft == false" in condition
     assert "github.event.release.prerelease == false" in condition
     assert "steps.release-target.outputs.is_branch == 'true'" in condition
+    assert step["working-directory"] == "release-payload"
+    assert set(step["env"]) == {"TAG_NAME", "BRANCH"}
 
 
 def test_release_uploads_zip_before_moving_refs() -> None:
@@ -82,7 +104,7 @@ def test_release_uploads_zip_before_moving_refs() -> None:
     job = _job("release.yml", "update_version_and_create_zip")
     names = [step["name"] for step in job["steps"]]
 
-    assert names.index("Upload Zip to Release") < min(map(names.index, RELEASE_MUTATION_STEPS))
+    assert names.index("Upload Zip to Release") < names.index(RELEASE_MUTATION_STEP)
     assert _step(job, "Upload Zip to Release")["with"]["files"] == "./animated_scenes.zip"
     assert '"$GITHUB_WORKSPACE/animated_scenes.zip"' in _step(job, "Create Zip")["run"]
 
@@ -91,4 +113,4 @@ def test_release_shell_steps_do_not_interpolate_event_data() -> None:
     """Pass release metadata through the environment instead of shell text."""
     job = _job("release.yml", "update_version_and_create_zip")
 
-    assert not [step["name"] for step in job["steps"] if "github.event" in step.get("run", "")]
+    assert not [step["name"] for step in job["steps"] if "${{" in step.get("run", "")]

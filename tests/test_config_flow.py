@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 from pathlib import Path
@@ -452,12 +453,13 @@ async def test_options_rgb_ui_invalid_edit_does_not_mutate_entry_data(
         selector_mode=COLOR_SELECTOR_RGB_UI,
         color_rgb_dict={"red": stored_color},
     )
+    expected_colors = copy.deepcopy(entry.data[CONF_COLOR_RGB_DICT])
 
     result = await flow.async_step_color_rgb_ui({CONF_BRIGHTNESS: "invalid"})
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_BRIGHTNESS_NOT_INT_OR_RANGE}
-    assert entry.data[CONF_COLOR_RGB_DICT] == {"red": stored_color}
+    assert entry.data[CONF_COLOR_RGB_DICT] == expected_colors
 
 
 async def test_options_rgb_ui_rejects_deleting_only_color(
@@ -475,6 +477,7 @@ async def test_options_rgb_ui_rejects_deleting_only_color(
         selector_mode=COLOR_SELECTOR_RGB_UI,
         color_rgb_dict={"red": stored_color},
     )
+    expected_colors = copy.deepcopy(entry.data[CONF_COLOR_RGB_DICT])
 
     result = await flow.async_step_color_rgb_ui(
         {
@@ -485,7 +488,7 @@ async def test_options_rgb_ui_rejects_deleting_only_color(
 
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_COLORS_IS_BLANK}
-    assert entry.data[CONF_COLOR_RGB_DICT] == {"red": stored_color}
+    assert entry.data[CONF_COLOR_RGB_DICT] == expected_colors
 
 
 async def test_options_rename_stops_previous_animation_before_reload(
@@ -520,6 +523,96 @@ async def test_options_rename_stops_previous_animation_before_reload(
     assert entry.title == "Scary"
     assert entry.data[CONF_NAME] == "Scary"
     assert result["type"] == "create_entry"
+
+
+async def _setup_real_scene_entry(hass: HomeAssistant, **overrides: object) -> MockConfigEntry:
+    """Set up a real YAML-color scene entry named Spooky and return it."""
+    data: dict[str, object] = {
+        CONF_NAME: "Spooky",
+        CONF_ENTITY_TYPE: ENTITY_SCENE,
+        CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_YAML,
+        CONF_COLOR_RGB_DICT: {},
+        "icon": "mdi:lightbulb",
+        CONF_LIGHTS: ["light.one"],
+        CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+        "change_frequency": 3600,
+        "change_amount": "all",
+        "brightness": 255,
+        CONF_TRANSITION: 1,
+        **overrides,
+    }
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Spooky", data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_options_rename_keeps_unrelated_service_animation_with_new_name(
+    hass: HomeAssistant,
+) -> None:
+    """Keep a service animation named like a scene's new name running through reload."""
+    register_light_services(hass)
+    for light in ("light.one", "light.two"):
+        hass.states.async_set(light, "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    entry = await _setup_real_scene_entry(hass)
+    manager = Animations.instance
+    assert manager is not None
+    await hass.services.async_call(
+        DOMAIN,
+        "start_animation",
+        {
+            CONF_NAME: "Scary",
+            CONF_LIGHTS: ["light.two"],
+            CONF_COLORS: [{"color_type": "rgb_color", "color": [0, 255, 0]}],
+            "change_frequency": 3600,
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+    assert len(animation_tasks("Scary")) == 1
+
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {CONF_NAME: "Scary", CONF_LIGHTS: ["light.one"]}
+    )
+    assert flow["step_id"] == "color_yaml"
+    result = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] == "create_entry"
+    assert entry.data[CONF_NAME] == "Scary"
+    assert "Scary" in manager.animations
+    assert len(animation_tasks("Scary")) == 1
+    await manager.stop({CONF_NAME: "Scary"})
+
+
+async def test_options_keep_stored_decimal_timings_when_fields_are_omitted(
+    hass: HomeAssistant,
+) -> None:
+    """Show stored decimal frequency and transition as text defaults and save them unchanged."""
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    entry = await _setup_real_scene_entry(hass, change_frequency=0.5, **{CONF_TRANSITION: 0.5})
+
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {CONF_NAME: "Spooky", CONF_LIGHTS: ["light.one"]}
+    )
+    assert flow["step_id"] == "color_yaml"
+    result = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] == "create_entry"
+    assert entry.data["change_frequency"] == 0.5
+    assert entry.data[CONF_TRANSITION] == 0.5
+    manager = Animations.instance
+    assert manager is not None
+    await manager.stop({CONF_NAME: "Spooky"})
 
 
 async def test_options_yaml_accepts_imported_legacy_platform(

@@ -945,7 +945,7 @@ class Animations:
         if new_state.state == "on" and old_state.state == "off":
             if entity_id not in self.states:
                 self.states[entity_id] = self.hass.states.get(entity_id)
-            animation = self.refresh_animation_for_light(entity_id)
+            animation = self.get_animation_for_light(entity_id)
             if animation:
                 await animation.update_light(entity_id)
 

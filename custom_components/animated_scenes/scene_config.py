@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any
 
 from homeassistant.components.light import (
@@ -270,22 +271,26 @@ COLOR_GROUP_SCHEMA = {
 }
 
 
-def _validate_color_weights(colors: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Require at least one selectable color while allowing zero-weight colors.
+def validate_start_service_weights(data: dict[str, Any]) -> dict[str, Any]:
+    """Require a selectable color only when colors are chosen at random.
+
+    Sequence mode walks the colors in order, so zero weights are harmless there.
 
     Args:
-        colors: Validated color configuration groups.
+        data: Validated start service data.
 
     Returns:
-        The unchanged color groups when their total weight is positive.
+        The unchanged data when the weights are usable.
 
     Raises:
-        vol.Invalid: If every configured color has zero weight.
+        vol.Invalid: If random mode has no color with a positive total weight.
 
     """
-    if sum(color[CONF_COLOR_WEIGHT] for color in colors) <= 0:
+    if data.get(CONF_CHANGE_SEQUENCE):
+        return data
+    if sum(color[CONF_COLOR_WEIGHT] for color in data.get(CONF_COLORS, [])) <= 0:
         raise vol.Invalid(ERROR_COLORS_MALFORMED)
-    return colors
+    return data
 
 
 START_SERVICE_CONFIG = {
@@ -370,11 +375,10 @@ START_SERVICE_CONFIG = {
                 ).extend(COLOR_GROUP_SCHEMA),
             )
         ],
-        _validate_color_weights,
     ),
 }
 
-START_SERVICE_SCHEMA = vol.Schema(START_SERVICE_CONFIG)
+START_SERVICE_SCHEMA = vol.All(vol.Schema(START_SERVICE_CONFIG), validate_start_service_weights)
 STOP_SERVICE_SCHEMA = vol.Schema({vol.Required(CONF_NAME): cv.string})
 ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA = vol.Schema(
     {
@@ -415,16 +419,18 @@ def is_number(value: Any) -> tuple[bool, Any]:
         parsed = float(value)
     except TypeError, ValueError:
         return False, value
+    if not math.isfinite(parsed):
+        return False, value
     return True, parsed
 
 
 def list_or_int_to_str(value: Any) -> Any:
-    """Return a UI string representation for an int or two-item list."""
+    """Return a UI string representation for a finite number or two-item list."""
     if isinstance(value, list):
         return "[" + ", ".join(str(item) for item in value) + "]"
-    is_int_check, is_int_value = is_int(value)
-    if is_int_check:
-        return str(is_int_value)
+    is_number_check, number_value = is_number(value)
+    if is_number_check:
+        return str(number_value)
     return value
 
 
@@ -447,7 +453,7 @@ def is_int_or_list(
             value = _strlist_to_list(value)
         else:
             return False, value
-    if isinstance(value, list) and len(value) == 2:
+    if isinstance(value, list | tuple) and len(value) == 2:
         is_first, first = is_int(value[0])
         is_second, second = is_int(value[1])
         if not (is_first and is_second):
@@ -485,7 +491,7 @@ def is_number_or_list(
             value = _strlist_to_list(value)
         else:
             return False, value
-    if isinstance(value, list) and len(value) == 2:
+    if isinstance(value, list | tuple) and len(value) == 2:
         is_first, first = is_number(value[0])
         is_second, second = is_number(value[1])
         if not (is_first and is_second):

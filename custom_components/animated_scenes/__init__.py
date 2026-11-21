@@ -136,8 +136,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry,
             [Platform.SENSOR],
         )
-    if unload_ok and manager and entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_SCENE:
-        name = entry.data.get("name")
+    if unload_ok and manager and entity_type == ENTITY_SCENE:
+        # Stop the name that was loaded; entry.data may already hold a renamed value.
+        loaded_config = getattr(entry, "runtime_data", None) or entry.data
+        name = loaded_config.get("name")
         if name is not None:
             await manager.stop_by_name(name)
     return unload_ok

@@ -212,7 +212,7 @@ The `name` is the animation ID. Use the same name to stop it later.
 
 `start_animation` and new UI scenes share the same defaults: `priority: 100`, `restore_power: true`, and `change_amount: 1`. Existing scenes keep their saved values.
 
-The top-level `brightness` applies when `animate_brightness` is off. When it is on, each color uses its own brightness.
+When `animate_brightness` is off, the top-level `brightness` must be a single number; a range is ignored. When it is on, each color uses its own brightness, and the top-level `brightness` is the fallback for a color without one.
 
 ### Stop An Animation
 

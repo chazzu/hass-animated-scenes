@@ -78,7 +78,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
-          persist-credentials: false
+          # The coverage action pushes its data branch through checkout credentials.
+          persist-credentials: true
 
       - name: Download coverage data
         uses: actions/download-artifact@v8

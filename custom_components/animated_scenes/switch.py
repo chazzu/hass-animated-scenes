@@ -46,7 +46,11 @@ from .const import (
     EVENT_STATE_STOPPED,
     INTEGRATION_NAME,
 )
-from .scene_config import START_SERVICE_CONFIG, build_colors_from_rgb_dict
+from .scene_config import (
+    START_SERVICE_CONFIG,
+    build_colors_from_rgb_dict,
+    validate_start_service_weights,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -80,7 +84,9 @@ PLATFORM_SCHEMA_PART = vol.Schema(
     }
 )
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA_PART.extend(START_SERVICE_CONFIG)
+PLATFORM_SCHEMA = vol.All(
+    PLATFORM_SCHEMA_PART.extend(START_SERVICE_CONFIG), validate_start_service_weights
+)
 
 
 async def async_setup_platform(

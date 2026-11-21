@@ -29,14 +29,37 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const pullRequests = context.payload.workflow_run.pull_requests || [];
-            if (pullRequests.length === 0) {
-              core.setOutput('should_post', 'false');
-              return;
+            const workflowRun = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            let prNumber = workflowRun.pull_requests?.[0]?.number;
+
+            // Fork runs have no pull_requests entry, so match the exact run head.
+            if (prNumber === undefined) {
+              const headRepository = workflowRun.head_repository?.full_name;
+              const { data: candidates } =
+                await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: workflowRun.head_sha,
+                  per_page: 100,
+                });
+              const match = headRepository
+                ? candidates.find(
+                    (candidate) =>
+                      candidate.state === 'open' &&
+                      candidate.base.repo?.full_name === `${owner}/${repo}` &&
+                      candidate.head.sha === workflowRun.head_sha &&
+                      candidate.head.repo?.full_name === headRepository &&
+                      candidate.head.ref === workflowRun.head_branch,
+                  )
+                : undefined;
+              if (!match) {
+                core.setOutput('should_post', 'false');
+                return;
+              }
+              prNumber = match.number;
             }
 
-            const { owner, repo } = context.repo;
-            const prNumber = pullRequests[0].number;
             const { data: pullRequest } = await github.rest.pulls.get({
               owner,
               repo,

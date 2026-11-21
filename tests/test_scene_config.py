@@ -253,7 +253,12 @@ def test_validate_start_service_data_rejects_unsafe_repeating_frequency(
 
 @pytest.mark.parametrize(
     CONF_BRIGHTNESS,
-    [(0.5,), ("0.5",), ([1, 2.5],), ("[1, 2.5]",)],
+    [
+        pytest.param(0.5, id="float"),
+        pytest.param("0.5", id="float_text"),
+        pytest.param([1, 2.5], id="list"),
+        pytest.param("[1, 2.5]", id="list_text"),
+    ],
 )
 def test_validate_start_service_data_rejects_fractional_brightness(
     brightness: object,
@@ -264,6 +269,7 @@ def test_validate_start_service_data_rejects_fractional_brightness(
 
     with pytest.raises(vol.Invalid) as err:
         validate_start_service_data(data)
+    assert err.value.path[0] == CONF_BRIGHTNESS
     assert "priority_not_int" not in str(err.value)
 
 
@@ -559,6 +565,108 @@ def test_zero_frequency_range_starts_at_repeat_minimum(
     service_data[CONF_CHANGE_FREQUENCY] = change_frequency
     service_data["colors"] = [{"color_type": "rgb_color", "color": [255, 0, 0]}]
     assert START_SERVICE_SCHEMA(service_data)[CONF_CHANGE_FREQUENCY] == service_value
+
+
+@pytest.mark.parametrize(
+    ("change_sequence", "accepted"),
+    [(False, False), (True, True)],
+    ids=["random_rejected", "sequence_accepted"],
+)
+def test_all_zero_color_weights_only_matter_for_random_selection(
+    change_sequence: bool, accepted: bool
+) -> None:
+    """Require a positive total weight only when colors are picked at random."""
+    data = {
+        CONF_NAME: "Weights",
+        CONF_LIGHTS: ["light.one"],
+        "change_sequence": change_sequence,
+        "colors": [
+            {"color_type": "rgb_color", "color": [255, 0, 0], "weight": 0},
+            {"color_type": "rgb_color", "color": [0, 0, 255], "weight": 0},
+        ],
+    }
+
+    if accepted:
+        assert validate_start_service_data(data)["change_sequence"] is True
+        assert START_SERVICE_SCHEMA(data)["colors"][0]["weight"] == 0
+    else:
+        with pytest.raises(vol.Invalid, match="colors_malformed"):
+            START_SERVICE_SCHEMA(data)
+
+
+@pytest.mark.parametrize("key", [CONF_CHANGE_FREQUENCY, CONF_TRANSITION])
+@pytest.mark.parametrize(
+    "value",
+    [[1, float("nan")], "[1, nan]", [0, float("nan")], "[0, nan]", float("nan"), "inf", "nan"],
+    ids=["list", "text", "zero_list", "zero_text", "scalar_nan", "scalar_inf", "scalar_text_nan"],
+)
+def test_normalize_scene_input_rejects_non_finite_timings(key: str, value: object) -> None:
+    """Reject NaN and infinite frequency and transition values."""
+    data = _base_input()
+    data[key] = value
+
+    with pytest.raises(vol.Invalid):
+        normalize_scene_input(data)
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected"),
+    [
+        (CONF_CHANGE_FREQUENCY, 0, 0.0),
+        (CONF_CHANGE_FREQUENCY, [1, 5], [1, 5]),
+        (CONF_TRANSITION, 0, 0),
+        (CONF_TRANSITION, [0.5, 2], [0.5, 2]),
+    ],
+)
+def test_normalize_scene_input_keeps_finite_timings(
+    key: str, value: object, expected: object
+) -> None:
+    """Keep scalar zero and finite ranges working after rejecting NaN."""
+    data = _base_input()
+    data[key] = value
+
+    assert normalize_scene_input(data)[key] == expected
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected"),
+    [
+        (CONF_CHANGE_AMOUNT, (3, 1), [1, 3]),
+        (CONF_CHANGE_AMOUNT, (2, 2), 2),
+        (CONF_TRANSITION, (2, 0.5), [0.5, 2]),
+        (CONF_CHANGE_FREQUENCY, (5, 1), [1, 5]),
+        (CONF_CHANGE_FREQUENCY, (0, 5), [0.1, 5.0]),
+        (CONF_BRIGHTNESS, (200, 100), [100, 200]),
+    ],
+)
+def test_normalize_scene_input_accepts_two_item_tuples(
+    key: str, value: tuple[float, float], expected: object
+) -> None:
+    """Treat two-item tuples like lists, including collapsed ranges."""
+    data = _base_input()
+    data[key] = value
+
+    assert normalize_scene_input(data)[key] == expected
+
+
+@pytest.mark.parametrize("key", [CONF_CHANGE_AMOUNT, CONF_TRANSITION, CONF_CHANGE_FREQUENCY])
+@pytest.mark.parametrize("value", [(1,), (1, 2, 3), [1], [1, 2, 3]])
+def test_normalize_scene_input_rejects_malformed_range_lengths(key: str, value: object) -> None:
+    """Reject ranges that do not have exactly two items."""
+    data = _base_input()
+    data[key] = value
+
+    with pytest.raises(vol.Invalid):
+        normalize_scene_input(data)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(0.5, "0.5"), (2.0, "2"), ("0.5", "0.5"), (3, "3"), ([1, 2.5], "[1, 2.5]")],
+)
+def test_list_or_int_to_str_keeps_finite_decimals(value: object, expected: str) -> None:
+    """Render stored decimals as text for the options form."""
+    assert scene_config.list_or_int_to_str(value) == expected
 
 
 def test_new_scene_and_service_defaults_match_legacy_runtime() -> None:

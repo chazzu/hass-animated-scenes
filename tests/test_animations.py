@@ -979,6 +979,86 @@ async def test_external_turn_on_updates_light_from_event_loop(hass: HomeAssistan
     await manager.stop({CONF_NAME: "Spooky"})
 
 
+async def test_external_turn_on_reapplies_only_the_recorded_owner(hass: HomeAssistant) -> None:
+    """Send one update from the owner when equal-priority scenes share a light."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    await _start(
+        manager,
+        "First",
+        ["light.one"],
+        priority=5,
+        colors=[{"color_type": "rgb_color", "color": (255, 0, 0)}],
+    )
+    second = await _start(
+        manager,
+        "Second",
+        ["light.one"],
+        priority=5,
+        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    )
+    assert manager.light_owner["light.one"] is second
+    await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    hass.states.async_set("light.one", "off", {})
+    await hass.async_block_till_done()
+    calls.clear()
+
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (9, 9, 9)})
+    await hass.async_block_till_done()
+
+    assert [call["rgb_color"] for call in calls] == [(0, 255, 0)]
+    await manager.stop({CONF_NAME: "First"})
+    await manager.stop({CONF_NAME: "Second"})
+
+
+async def test_sequence_scene_with_zero_weights_starts_from_switch(hass: HomeAssistant) -> None:
+    """Start a sequence scene through its switch even when every color weight is zero."""
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    data = {
+        **_full_scene_data(),
+        "change_sequence": True,
+        "colors": [
+            {"color_type": "rgb_color", "color": [255, 0, 0], "weight": 0},
+            {"color_type": "rgb_color", "color": [0, 0, 255], "weight": 0},
+        ],
+    }
+    await _setup_scene_entry(hass, data)
+    manager = Animations.instance
+    assert manager is not None
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert "Spooky" in manager.animations
+    assert calls[0]["rgb_color"] == (255, 0, 0)
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
+async def test_random_scene_with_zero_weights_is_rejected_by_switch(hass: HomeAssistant) -> None:
+    """Keep rejecting all-zero weights when colors are chosen at random."""
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    data = {
+        **_full_scene_data(),
+        "colors": [{"color_type": "rgb_color", "color": [255, 0, 0], "weight": 0}],
+    }
+    await _setup_scene_entry(hass, data)
+    manager = Animations.instance
+    assert manager is not None
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert manager.animations == {}
+
+
 def _to_rgb(color_type: str, value: Any) -> tuple[float, float, float]:
     """Convert a light color value to RGB for proximity assertions."""
     if color_type == "rgbw_color":
