@@ -265,6 +265,19 @@ async def test_yaml_import_aborts_when_scene_was_already_imported(hass: HomeAssi
     assert len(hass.config_entries.async_entries(DOMAIN)) == 1
 
 
+async def test_yaml_import_without_config_aborts(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Abort an import flow started without YAML data instead of crashing."""
+    with caplog.at_level(logging.WARNING):
+        result = await _import_yaml_scene(hass, None)  # type: ignore[arg-type]
+
+    assert result["type"] == "abort"
+    assert result["reason"] == ABORT_IMPORT_INVALID
+    assert hass.config_entries.async_entries(DOMAIN) == []
+    assert "no configuration was given" in caplog.text
+
+
 def test_import_abort_reasons_have_translations() -> None:
     """Give every import abort reason user-facing text."""
     translations = json.loads(TRANSLATIONS_PATH.read_text(encoding="utf-8"))
@@ -317,15 +330,27 @@ async def test_scene_flows_reject_out_of_range_priority(
     assert [item.entry_id for item in hass.config_entries.async_entries(DOMAIN)] == ["spooky"]
 
 
-async def test_scene_flow_accepts_priority_at_range_limit(hass: HomeAssistant) -> None:
-    """Accept the lowest documented priority and store it as an integer."""
-    flow = AnimatedScenesConfigFlow()
-    flow.hass = hass
+async def test_scene_flow_stores_priority_at_range_limit_as_int(hass: HomeAssistant) -> None:
+    """Store the lowest documented priority as an integer, not an equal float."""
+    menu = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    scene_form = await hass.config_entries.flow.async_configure(
+        menu["flow_id"], {"next_step_id": "scene"}
+    )
+    color_form = await hass.config_entries.flow.async_configure(
+        scene_form["flow_id"], {**_scene_input("Scary"), "priority": float(PRIORITY_MIN)}
+    )
+    assert color_form["step_id"] == "color_yaml"
 
-    result = await flow.async_step_scene({**_scene_input("Scary"), "priority": float(PRIORITY_MIN)})
+    result = await hass.config_entries.flow.async_configure(
+        color_form["flow_id"],
+        {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]},
+    )
+    await hass.async_block_till_done()
 
-    assert result["step_id"] == "color_yaml"
-    assert flow._data["priority"] == PRIORITY_MIN
+    assert result["type"] == "create_entry"
+    stored_priority = result["result"].data["priority"]
+    assert type(stored_priority) is int
+    assert stored_priority == PRIORITY_MIN
 
 
 async def test_yaml_creation_rechecks_duplicate_name_before_create(
@@ -406,12 +431,42 @@ async def test_options_rename_rechecks_duplicate_name_before_update(
     assert entry.data[CONF_NAME] == "Spooky"
 
 
-async def test_options_rename_records_yaml_name_of_legacy_import(hass: HomeAssistant) -> None:
-    """Record an older imported scene's YAML name before a rename replaces its title."""
+@pytest.mark.parametrize(
+    ("source", "unique_id", "other_unique_id", "expected_unique_id"),
+    [
+        (SOURCE_IMPORT, None, None, "Spooky"),
+        ("user", None, None, None),
+        (SOURCE_IMPORT, "Original", None, "Original"),
+        (SOURCE_IMPORT, None, "Spooky", None),
+    ],
+    ids=["legacy_import", "ui_created", "import_with_yaml_name", "yaml_name_taken"],
+)
+async def test_options_rename_records_yaml_name_only_for_legacy_import(
+    hass: HomeAssistant,
+    source: str,
+    unique_id: str | None,
+    other_unique_id: str | None,
+    expected_unique_id: str | None,
+) -> None:
+    """Record the old title as the YAML name only for an older imported entry.
+
+    A UI-created scene has no YAML scene to protect, an imported entry that
+    already records its YAML name keeps it, and a name another entry already
+    holds as its unique id is left alone so the rename still saves.
+    """
+    if other_unique_id is not None:
+        MockConfigEntry(
+            domain=DOMAIN,
+            title="Other",
+            unique_id=other_unique_id,
+            source=SOURCE_IMPORT,
+            data={CONF_NAME: "Other", CONF_ENTITY_TYPE: ENTITY_SCENE},
+        ).add_to_hass(hass)
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Spooky",
-        source=SOURCE_IMPORT,
+        source=source,
+        unique_id=unique_id,
         data={
             CONF_NAME: "Spooky",
             CONF_ENTITY_TYPE: ENTITY_SCENE,
@@ -431,7 +486,10 @@ async def test_options_rename_records_yaml_name_of_legacy_import(hass: HomeAssis
 
     assert result["type"] == "create_entry"
     assert entry.title == "Scary"
-    assert entry.unique_id == "Spooky"
+    assert entry.data[CONF_NAME] == "Scary"
+    assert entry.unique_id == expected_unique_id
+    others = [item for item in hass.config_entries.async_entries(DOMAIN) if item is not entry]
+    assert [item.unique_id for item in others] == ([other_unique_id] if other_unique_id else [])
 
 
 async def test_options_rgb_ui_counts_added_colors(hass: HomeAssistant) -> None:
@@ -499,6 +557,73 @@ async def test_new_rgb_ui_rejects_all_zero_color_weights(hass: HomeAssistant) ->
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_COLORS_MALFORMED}
     assert hass.config_entries.async_entries(DOMAIN) == []
+
+
+# The selectors' max bounds already reject infinity, but NaN passes them.
+NON_FINITE_COLOR_NUMBERS = [
+    pytest.param(CONF_COLOR_WEIGHT, float("nan"), id="weight_nan"),
+    pytest.param(CONF_COLOR_NEARBY_COLORS, float("nan"), id="nearby_colors_nan"),
+]
+
+
+@pytest.mark.parametrize(("field", "value"), NON_FINITE_COLOR_NUMBERS)
+async def test_new_rgb_ui_rejects_non_finite_color_numbers(
+    hass: HomeAssistant, field: str, value: float
+) -> None:
+    """Show the malformed-colors error for NaN instead of crashing."""
+    menu = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    scene_form = await hass.config_entries.flow.async_configure(
+        menu["flow_id"], {"next_step_id": "scene"}
+    )
+    color_form = await hass.config_entries.flow.async_configure(
+        scene_form["flow_id"],
+        {
+            CONF_NAME: "Not A Number",
+            CONF_LIGHTS: ["light.one"],
+            CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_RGB_UI,
+        },
+    )
+    assert color_form["step_id"] == "color_rgb_ui"
+
+    result = await hass.config_entries.flow.async_configure(
+        color_form["flow_id"], {CONF_COLOR: [255, 0, 0], field: value}
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "color_rgb_ui"
+    assert result["errors"] == {"base": ERROR_COLORS_MALFORMED}
+    assert hass.config_entries.async_entries(DOMAIN) == []
+
+
+@pytest.mark.parametrize(("field", "value"), NON_FINITE_COLOR_NUMBERS)
+async def test_options_rgb_ui_rejects_non_finite_color_numbers(
+    hass: HomeAssistant, field: str, value: float
+) -> None:
+    """Keep the stored colors when an options edit sends NaN."""
+    stored_color = {
+        CONF_COLOR: [255, 0, 0],
+        CONF_BRIGHTNESS: DEFAULT_BRIGHTNESS,
+        CONF_COLOR_WEIGHT: DEFAULT_COLOR_WEIGHT,
+        CONF_COLOR_NEARBY_COLORS: DEFAULT_COLOR_NEARBY_COLORS,
+    }
+    _, entry = _options_flow(
+        hass, selector_mode=COLOR_SELECTOR_RGB_UI, color_rgb_dict={"red": stored_color}
+    )
+    expected_data = copy.deepcopy(dict(entry.data))
+    scene_form = await hass.config_entries.options.async_init(entry.entry_id)
+    color_form = await hass.config_entries.options.async_configure(
+        scene_form["flow_id"], {CONF_NAME: "Spooky", CONF_LIGHTS: ["light.one"]}
+    )
+    assert color_form["step_id"] == "color_rgb_ui"
+
+    result = await hass.config_entries.options.async_configure(
+        color_form["flow_id"], {CONF_COLOR: [255, 0, 0], field: value}
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "color_rgb_ui"
+    assert result["errors"] == {"base": ERROR_COLORS_MALFORMED}
+    assert dict(entry.data) == expected_data
 
 
 async def test_new_rgb_ui_retry_does_not_store_rejected_color(hass: HomeAssistant) -> None:

@@ -217,24 +217,6 @@ def _whole_float_to_int(value: float) -> int:
     return int(value)
 
 
-def _reject_non_finite_float(value: Any) -> Any:
-    """Reject infinite or NaN floats before integer coercion can crash on them.
-
-    Args:
-        value: Color temperature supplied through a flow or service call.
-
-    Returns:
-        The unchanged value when it is not a non-finite float.
-
-    Raises:
-        vol.Invalid: If the value is a float that is infinite or NaN.
-
-    """
-    if isinstance(value, float) and not math.isfinite(value):
-        raise vol.Invalid("color temperature must be a finite number")
-    return value
-
-
 def _priority_to_int(value: Any) -> int:
     """Convert an integral priority value to int with its flow error key.
 
@@ -250,7 +232,8 @@ def _priority_to_int(value: Any) -> int:
 
     """
     try:
-        # Keep integers exact; a float round-trip would round large values.
+        # Integers skip the float check for fractions. Either path is exact for
+        # the allowed range, which stays well below 2**53.
         priority = value if isinstance(value, int) else _whole_float_to_int(float(value))
     except (OverflowError, TypeError, ValueError, vol.Invalid) as err:
         raise vol.Invalid(ERROR_PRIORITY_NOT_INT) from err
@@ -485,7 +468,6 @@ START_SERVICE_CONFIG = {
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP,
                         vol.Required(CONF_COLOR): vol.All(
-                            _reject_non_finite_float,
                             _coerce_int,
                             vol.Range(min=1, max=COLOR_TEMPERATURE_MAX),
                         ),
@@ -495,7 +477,6 @@ START_SERVICE_CONFIG = {
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP_KELVIN,
                         vol.Required(CONF_COLOR): vol.All(
-                            _reject_non_finite_float,
                             _coerce_int,
                             vol.Range(min=0, max=COLOR_TEMPERATURE_MAX),
                         ),

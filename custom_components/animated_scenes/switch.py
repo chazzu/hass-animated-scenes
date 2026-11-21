@@ -45,6 +45,7 @@ from .const import (
     EVENT_STATE_STOPPED,
     INTEGRATION_NAME,
 )
+from .entity import integration_device_info
 from .scene_config import (
     START_SERVICE_CONFIG,
     build_colors_from_rgb_dict,
@@ -243,11 +244,7 @@ class AnimatedSceneSwitch(SwitchEntity):
             one integration device.
 
         """
-        return {
-            "identifiers": {(DOMAIN, "animated_scenes")},
-            "name": INTEGRATION_NAME,
-            "manufacturer": INTEGRATION_NAME,
-        }
+        return integration_device_info()
 
     async def async_added_to_hass(self) -> None:
         """Subscribe the switch to animation lifecycle events.

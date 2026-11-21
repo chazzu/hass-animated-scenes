@@ -996,8 +996,8 @@ class Animations:
         config = self.validate_start(data)
         id_name: str = data[CONF_NAME]
         preserved_states: dict[str, State] = {}
-        replaced = id_name in self.animations
-        if replaced:
+        previous: Animation | None = None
+        if id_name in self.animations:
             _LOGGER.info("Animation '%s' was already running, so stopping it", id_name)
             previous = self.animations[id_name]
             next_lights = set(config[CONF_LIGHTS])
@@ -1044,9 +1044,32 @@ class Animations:
             if not startup_complete:
                 if animation is not None:
                     await animation.release()
-                elif replaced:
+                elif previous is not None:
+                    await self._release_failed_restart_lights(previous, preserved_states)
                     # The replaced scene did not announce its stop; do it now.
                     self.fire_animation_change(id_name, EVENT_STATE_STOPPED)
+
+    async def _release_failed_restart_lights(
+        self, previous: Animation, preserved_states: dict[str, State]
+    ) -> None:
+        """Release the lights a failed restart carried over from the old scene.
+
+        The replaced scene skipped the handoff and restore for these lights so
+        the replacement could keep them. When no replacement starts, finish
+        that release as the old scene's stop would have: hand each unowned
+        light to another tracking scene, or restore it and drop its state.
+
+        Args:
+            previous: The replaced animation, whose restore settings apply.
+            preserved_states: Stored states the restart carried forward.
+
+        Returns:
+            None
+
+        """
+        for light in preserved_states:
+            await self.release_light(previous, light, refresh=False)
+        self.refresh_listener()
 
     async def _hand_off_dropped_restart_lights(
         self, preserved_states: dict[str, State], active_lights: list[str]
@@ -1315,7 +1338,11 @@ class Animations:
             elif tracked_animations:
                 self.states.pop(light, None)
 
-        await asyncio.gather(*updates)
+        # Await each release in this task instead of gathering child tasks: the
+        # lights are already removed above, so a caller cancelled at a gather
+        # would skip their release and leak ownership, states and the listener.
+        for update in updates:
+            await update
         self.refresh_listener()
         for animation in affected_animations:
             if len(animation.get_active_lights()) == 0:

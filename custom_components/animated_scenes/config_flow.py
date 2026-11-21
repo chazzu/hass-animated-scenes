@@ -189,6 +189,17 @@ def _normalize_rgb_ui_color_input(color_data: dict[str, Any]) -> str | None:
     """
     if color_data.get(CONF_COLOR) is None:
         return ERROR_COLORS_IS_BLANK
+    try:
+        color_weight = round(color_data.get(CONF_COLOR_WEIGHT, DEFAULT_COLOR_WEIGHT))
+        nearby_colors = round(color_data.get(CONF_COLOR_NEARBY_COLORS, DEFAULT_COLOR_NEARBY_COLORS))
+    except ValueError, OverflowError:
+        # NumberSelector range checks let NaN through, and round() rejects it.
+        _LOGGER.debug(
+            "Rejecting non-finite color weight %s or nearby colors %s",
+            color_data.get(CONF_COLOR_WEIGHT),
+            color_data.get(CONF_COLOR_NEARBY_COLORS),
+        )
+        return ERROR_COLORS_MALFORMED
     _LOGGER.debug(
         "Checking Brightness: %s, type: %s",
         color_data.get(CONF_BRIGHTNESS),
@@ -204,10 +215,8 @@ def _normalize_rgb_ui_color_input(color_data: dict[str, Any]) -> str | None:
     if brightness_value is None:
         brightness_value = DEFAULT_BRIGHTNESS
     color_data[CONF_BRIGHTNESS] = brightness_value
-    color_data[CONF_COLOR_WEIGHT] = round(color_data.get(CONF_COLOR_WEIGHT, DEFAULT_COLOR_WEIGHT))
-    color_data[CONF_COLOR_NEARBY_COLORS] = round(
-        color_data.get(CONF_COLOR_NEARBY_COLORS, DEFAULT_COLOR_NEARBY_COLORS)
-    )
+    color_data[CONF_COLOR_WEIGHT] = color_weight
+    color_data[CONF_COLOR_NEARBY_COLORS] = nearby_colors
     for key, value in RGB_UI_COLOR_DEFAULTS.items():
         color_data.setdefault(key, value)
     return None

@@ -294,10 +294,17 @@ async def test_yaml_setup_imports_only_scenes_without_entries(
         }
     )
 
-    with patch.object(hass.config_entries, "async_setup", AsyncMock(return_value=True)):
+    flow_manager = hass.config_entries.flow
+    with (
+        patch.object(hass.config_entries, "async_setup", AsyncMock(return_value=True)),
+        patch.object(flow_manager, "async_init", wraps=flow_manager.async_init) as start_import,
+    ):
         await async_setup_platform(hass, config, AsyncMock())
         await hass.async_block_till_done()
 
+    # A skipped scene must not even start an import flow, which would log a
+    # "Not importing" warning on every restart before aborting.
+    assert start_import.call_count == (1 if imported else 0)
     names = sorted(entry.data[CONF_NAME] for entry in hass.config_entries.async_entries(DOMAIN))
     assert names == sorted([str(existing["name"]), *([yaml_name] if imported else [])])
     assert hass.config_entries.flow.async_progress() == []

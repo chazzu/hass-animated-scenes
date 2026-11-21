@@ -15,7 +15,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .animations import Animations
-from .const import DEFAULT_ACTIVITY_SENSOR_ICON, DOMAIN, EVENT_NAME_CHANGE, INTEGRATION_NAME
+from .const import DEFAULT_ACTIVITY_SENSOR_ICON, EVENT_NAME_CHANGE
+from .entity import integration_device_info
 
 ENTITY_ID_FORMAT = Platform.SENSOR + ".{}"
 
@@ -53,11 +54,7 @@ class AnimatedScenesSensor(SensorEntity):
         self._attr_unique_id: str = "animated_scenes_activity_sensor"
         self._attr_name: str = "Activity"
         self._attr_icon: str = DEFAULT_ACTIVITY_SENSOR_ICON
-        self._attr_device_info: DeviceInfo = {
-            "identifiers": {(DOMAIN, "animated_scenes")},
-            "name": INTEGRATION_NAME,
-            "manufacturer": INTEGRATION_NAME,
-        }
+        self._attr_device_info: DeviceInfo = integration_device_info()
         self.entity_id = ENTITY_ID_FORMAT.format("animated_scenes_activity_sensor")
 
     async def async_added_to_hass(self) -> None:

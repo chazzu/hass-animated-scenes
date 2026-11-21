@@ -74,7 +74,7 @@
                     "brightness": "Sets the brightness for this color. Can be a number or a range in the format of '[125, 255]' (means to set this color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
                     "one_change_per_tick": "If set to true, only the brightness OR color will change at one time.",
                     "nearby_colors": "If set to a number between 1 and 10, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color. Set to 0 to disable.",
-                    "weight": "The higher the number, the more likely a color is to appear in the animation. Min: 0, Max: 255."
+                    "weight": "The higher the number, the more likely a color is to appear in the animation. Min: 0, Max: 255. In random color mode the total weight of all colors must be above 0; sequence mode allows 0."
                 },
                 "description": "Select a color to use in the animation.\n\n**Color #{color_count}**"
             }
@@ -161,7 +161,7 @@
                     "brightness": "Sets the brightness for this color. Can be a number or a range in the format of '[125, 255]' (means to set this color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
                     "one_change_per_tick": "If set to true, only the brightness OR color will change at one time.",
                     "nearby_colors": "If set to a number between 1 and 10, we won't pick this color but will instead pick a 'nearby' color. This is useful for selecting, for example, a red and getting a series of lights of various shades of red. The number represents how 'far' from the original we might pick a color. Set to 0 to disable.",
-                    "weight": "The higher the number, the more likely a color is to appear in the animation. Min: 0, Max: 255."
+                    "weight": "The higher the number, the more likely a color is to appear in the animation. Min: 0, Max: 255. In random color mode the total weight of all colors must be above 0; sequence mode allows 0."
                 },
                 "description": "Select a color to use in the animation.\n\n**Color #{color_count} of {color_max}**"
             }

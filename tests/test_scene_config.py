@@ -338,6 +338,8 @@ def test_validate_start_service_data_accepts_integral_priority(
 
     result = validate_start_service_data(data)
 
+    # A float such as 1.0 compares equal to 1, so also require an int.
+    assert type(result[CONF_PRIORITY]) is int
     assert result[CONF_PRIORITY] == expected
 
 
@@ -361,6 +363,8 @@ def test_normalize_scene_input_accepts_integral_priority(priority: object, expec
 
     result = normalize_scene_input(data)
 
+    # A float such as 1.0 compares equal to 1, so also require an int.
+    assert type(result[CONF_PRIORITY]) is int
     assert result[CONF_PRIORITY] == expected
 
 

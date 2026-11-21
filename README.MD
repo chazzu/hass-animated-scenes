@@ -65,7 +65,7 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 | `restore` | Restore previous light state when the animation ends. |
 | `restore_power` | Turn lights that were originally off back off when restoring. |
 | `change_sequence` | Use colors in the listed order instead of choosing randomly. |
-| `brightness` | Brightness for the animation or color group. Use a number or a range like `[70, 255]`. |
+| `brightness` | Brightness used only when `animate_brightness` is off. Use a single number from `0` to `255`. When `animate_brightness` is on, each color's own `brightness` is used instead (255 if the color has none). |
 | `animate_brightness` | Continue changing brightness while the animation runs. |
 | `animate_color` | Continue changing colors while the animation runs. |
 | `lights` | The lights included in the animation. |
@@ -93,7 +93,7 @@ nearby_colors: 0
 | --- | --- |
 | `weight` | Higher values make that color more likely to be selected. |
 | `brightness` | A brightness value from `0` to `255`, or a range like `[70, 255]`. |
-| `one_change_per_tick` | When true, about half of the updates change only brightness. The other updates change the color, and the brightness too if brightness animation is on. A color without its own `brightness` uses 255. The first update always applies the color. |
+| `one_change_per_tick` | Needs the color to have its own `brightness`. The first update of a light always applies the color. Once a light has used a color with this option, it keeps the behavior for the rest of the animation, even if later updates pick other colors. After that, about half of that light's updates change only its brightness, using this color's `brightness` (even when `animate_brightness` is off), and keep the current color. The other updates pick a color as usual. |
 | `nearby_colors` | For RGB, RGBW, RGBWW, HS, XY, and color temperature colors, choose a nearby color instead of the exact color. Use `0` to disable, or `1` through `10` to increase the variation. |
 
 <details>
@@ -273,7 +273,7 @@ Animated Scenes validates UI configuration and service calls before starting an 
 | `change_frequency` | `0` changes the lights once and then stops. Otherwise, a number or a range like `[2, 5]`, from `0.1` to `3600` seconds. A range starting at `0` starts at `0.1` instead. |
 | `priority` | Any whole number from `-1,000,000,000` to `1,000,000,000`. |
 | `change_amount` | An integer, a two-item range like `[1, 3]`, or `all`. Values above the active light count change every active light without replacing the saved value. |
-| `brightness` | `0` to `255`, or a two-item range like `[70, 255]`. |
+| `brightness` | Top-level: a single number from `0` to `255`; it is used only when `animate_brightness` is off (a range is ignored). Per color: `0` to `255`, or a two-item range like `[70, 255]`. |
 | `colors` | At least one color is required. In random mode (`change_sequence` off) the total color `weight` must be positive; in sequence mode, zero weights are allowed. |
 | `lights` | At least one light is required. |
 
