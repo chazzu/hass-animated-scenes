@@ -68,7 +68,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     Stores a copy of the entry data on the entry runtime data and forwards
     the config entry setup to the appropriate platform (switch for scene
-    entities, sensor for activity sensors).
+    entities, sensor for activity sensors). Home Assistant always runs
+    ``async_setup`` first, so the shared Animations manager already exists.
 
     Args:
         hass: The Home Assistant instance.
@@ -78,8 +79,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         True when the entry setup has been forwarded successfully.
 
     """
-    if Animations.instance is None:
-        Animations.instance = Animations(hass)
     entry.runtime_data = dict(entry.data)
     if entry.runtime_data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_SCENE:
         await hass.config_entries.async_forward_entry_setups(entry, [Platform.SWITCH])

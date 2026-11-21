@@ -33,7 +33,6 @@ from .const import (
     CONF_COLOR_RGB_DICT,
     CONF_COLOR_SELECTOR_MODE,
     CONF_COLORS,
-    CONF_ENTITY_TYPE,
     CONF_IGNORE_OFF,
     CONF_PLATFORM,
     CONF_PRIORITY,
@@ -49,18 +48,12 @@ from .const import (
 from .scene_config import (
     START_SERVICE_CONFIG,
     build_colors_from_rgb_dict,
+    runtime_scene_config,
+    scene_name_exists,
     validate_start_service_weights,
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-ANIMATION_CONFIG_EXCLUDED_KEYS = (
-    CONF_PLATFORM,
-    CONF_ICON,
-    CONF_ENTITY_TYPE,
-    CONF_COLOR_RGB_DICT,
-    CONF_COLOR_SELECTOR_MODE,
-)
 
 EXTRA_STATE_ATTRIBUTE_KEYS = (
     CONF_PRIORITY,
@@ -89,6 +82,30 @@ PLATFORM_SCHEMA = vol.All(
 )
 
 
+def _yaml_scene_already_imported(hass: HomeAssistant, name: str | None) -> bool:
+    """Return whether a legacy YAML scene already has a config entry.
+
+    An imported entry records its YAML name as its unique id, so it still
+    matches after the scene is renamed in the UI. Older imported entries kept
+    the YAML name as their title until a rename, and any scene entry using the
+    name blocks the import as a duplicate.
+
+    Args:
+        hass: Home Assistant instance containing config entries.
+        name: Scene name from the YAML configuration.
+
+    Returns:
+        True when the scene must not be imported again.
+
+    """
+    if name is None:
+        return False
+    return scene_name_exists(hass, name) or any(
+        name in (entry.unique_id, entry.title)
+        for entry in hass.config_entries.async_entries(DOMAIN)
+    )
+
+
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
@@ -101,11 +118,12 @@ async def async_setup_platform(
     into the UI-driven config entries system if the scene is not already
     registered.
     """
-    existing_titles = {entry.title for entry in hass.config_entries.async_entries(DOMAIN)}
+    name = config.get(CONF_NAME, None)
+    already_imported = _yaml_scene_already_imported(hass, name)
     _LOGGER.debug(
-        "[async_setup_platform] config name: %s, existing scenes title list: %s",
-        config.get(CONF_NAME, None),
-        existing_titles,
+        "[async_setup_platform] config name: %s, already imported: %s",
+        name,
+        already_imported,
     )
     async_create_issue(
         hass,
@@ -121,7 +139,7 @@ async def async_setup_platform(
             "integration_title": INTEGRATION_NAME,
         },
     )
-    if config.get(CONF_NAME, None) not in existing_titles:
+    if not already_imported:
         hass.async_create_task(
             hass.config_entries.flow.async_init(
                 DOMAIN,
@@ -154,6 +172,8 @@ class AnimatedSceneSwitch(SwitchEntity):
     """
 
     _unrecorded_attributes = frozenset({MATCH_ALL})
+    # Animation start/stop events drive every state change, so polling is unneeded.
+    _attr_should_poll = False
 
     def __init__(self, hass: HomeAssistant, config: ConfigType, unique_id: str) -> None:
         """Initialize the AnimatedSceneSwitch entity.
@@ -185,9 +205,7 @@ class AnimatedSceneSwitch(SwitchEntity):
             animation_config[CONF_COLORS] = build_colors_from_rgb_dict(
                 animation_config.get(CONF_COLOR_RGB_DICT, {})
             )
-        for key in ANIMATION_CONFIG_EXCLUDED_KEYS:
-            animation_config.pop(key, None)
-        return animation_config
+        return runtime_scene_config(animation_config)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

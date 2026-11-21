@@ -221,6 +221,7 @@ class Animation:
         self._restore_power: bool = config[CONF_RESTORE_POWER]
         self._restart_lights: set[str] = set()
         self._restart_owned_lights: set[str] = set()
+        self._replaced: bool = False
         self._sequence: bool = config[CONF_CHANGE_SEQUENCE]
         self._task: Task | None = None
         self._transition: NumberConfig = config[CONF_TRANSITION]
@@ -716,7 +717,8 @@ class Animation:
         """Release ownership of all lights and stop the animation.
 
         Restores any stored states as necessary and notifies Home
-        Assistant that the animation stopped.
+        Assistant that the animation stopped. A restart replacement does not
+        announce the stop, because the scene keeps running under the same name.
         """
         try:
             for light in list(self._active_lights):
@@ -732,13 +734,17 @@ class Animation:
             if Animations.instance:
                 Animations.instance.release_animation(self)
                 Animations.instance.refresh_listener()
-            self._hass.bus.async_fire(
-                EVENT_NAME_CHANGE,
-                {"animation": self._name, "state": EVENT_STATE_STOPPED},
-            )
+            if not self._replaced:
+                self._hass.bus.async_fire(
+                    EVENT_NAME_CHANGE,
+                    {"animation": self._name, "state": EVENT_STATE_STOPPED},
+                )
 
     def keep_states_for_restart(self, lights: set[str], owned_lights: set[str]) -> None:
         """Skip restoring lights whose saved state carries into a restart.
+
+        This also marks the animation as replaced, so releasing it does not
+        announce a stop for a scene that keeps running.
 
         Args:
             lights: Entity ids that the replacement animation will keep using.
@@ -751,6 +757,7 @@ class Animation:
         """
         self._restart_lights = lights
         self._restart_owned_lights = owned_lights
+        self._replaced = True
 
     def remove_light(self, light: str) -> None:
         """Remove a light from this animation's configured and active lists."""
@@ -989,7 +996,8 @@ class Animations:
         config = self.validate_start(data)
         id_name: str = data[CONF_NAME]
         preserved_states: dict[str, State] = {}
-        if id_name in self.animations:
+        replaced = id_name in self.animations
+        if replaced:
             _LOGGER.info("Animation '%s' was already running, so stopping it", id_name)
             previous = self.animations[id_name]
             next_lights = set(config[CONF_LIGHTS])
@@ -1012,27 +1020,64 @@ class Animations:
             await previous.stop()
             self.states.update(preserved_states)
         _LOGGER.info("Starting animation '%s'", id_name)
-        animation = Animation(self.hass, config)
-        active_lights = animation.get_active_lights()
-        unused_states = [
-            light
-            for light in preserved_states
-            if light not in active_lights and light not in self._light_animations
-        ]
-        for light in unused_states:
-            self.states.pop(light, None)
-        if unused_states:
-            self.refresh_listener()
-        for light in active_lights:
-            self._track_animation_light(animation, light)
-        self.animations[id_name] = animation
+        animation: Animation | None = None
         startup_complete = False
         try:
+            animation = Animation(self.hass, config)
+            active_lights = animation.get_active_lights()
+            unused_states = [
+                light
+                for light in preserved_states
+                if light not in active_lights and light not in self._light_animations
+            ]
+            for light in unused_states:
+                self.states.pop(light, None)
+            if unused_states:
+                self.refresh_listener()
+            for light in active_lights:
+                self._track_animation_light(animation, light)
+            self.animations[id_name] = animation
+            await self._hand_off_dropped_restart_lights(preserved_states, active_lights)
             await animation.start()
             startup_complete = True
         finally:
             if not startup_complete:
-                await animation.release()
+                if animation is not None:
+                    await animation.release()
+                elif replaced:
+                    # The replaced scene did not announce its stop; do it now.
+                    self.fire_animation_change(id_name, EVENT_STATE_STOPPED)
+
+    async def _hand_off_dropped_restart_lights(
+        self, preserved_states: dict[str, State], active_lights: list[str]
+    ) -> None:
+        """Give unowned lights the restart dropped to the next tracking scene.
+
+        A restart releases its preserved lights without a handoff. When the
+        replacement does not activate one of them (for example, it is off and
+        ``ignore_off`` is false), another scene that tracks the light must take
+        ownership, or it would stop driving the light until it is restarted.
+
+        Args:
+            preserved_states: Stored states the restart carried forward.
+            active_lights: Lights the replacement animation activated.
+
+        Returns:
+            None
+
+        """
+        for light in preserved_states:
+            if light in active_lights or self.get_animation_for_light(light) is not None:
+                continue
+            owner = self.refresh_animation_for_light(light)
+            if owner is None:
+                continue
+            self.light_owner[light] = owner
+            _LOGGER.info("Handing light %s to %s after restart", light, owner.name)
+            light_state = self.hass.states.get(light)
+            # An off light waits for the owner's ticks or an external turn-on.
+            if light_state is not None and light_state.state != "off":
+                await owner.update_light(light, initial=True)
 
     async def stop(self, data: dict[str, Any]) -> None:
         """Stop a running animation identified by service data."""

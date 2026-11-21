@@ -35,15 +35,15 @@
                     "color_selector_mode": "Color Selector Mode*"
                 },
                 "data_description": {
-                    "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light.",
+                    "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light. Any whole number from -1,000,000,000 to 1,000,000,000.",
                     "transition": "How many seconds a light should take to transition from its former state to its new state. Can be a number or a range in the format of '[2, 5]' (means to transition the lights over 2 to 5 seconds). Min: 0, Max: 6553.",
                     "change_frequency": "After how many seconds the animation should change. Can be a number or a range in the format of '[2, 5]' (means to change lights every 2 to 5 seconds). Use 0 to change the lights once and then stop. Otherwise, Min: 0.1, Max: 3600.",
                     "change_amount": "How many lights should be changed each time the frequency is hit. Can be a number, a range in the format of '[2, 5]' (means to change between 2 to 5 lights), or specifying the word 'all' will change all lights each time. Min: 0, Max: 65535.",
-                    "ignore_off": "If a light in the animation list is off when the animation starts, turn it on. Defaults to True, meaning lights will be ignored if they are off.",
+                    "ignore_off": "When on, lights in the animation list are included even if they are off, and the animation turns them on. When off, lights that are off when the animation starts are skipped.",
                     "restore": "When the animation ends, restore lights to their prior state.",
                     "restore_power": "When the animation ends, turn any lights that were off back to off.",
                     "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
-                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
+                    "brightness": "Brightness used when Animate Brightness is off. Use a single number from 0 to 255; a range such as '[125, 255]' is ignored in that mode. When Animate Brightness is on, each color uses its own brightness instead (255 unless the color sets one).",
                     "animate_brightness": "Whether or not to animate the brightness. If false, brightness will be set once upon startup.",
                     "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
                     "lights": "The lights to include in the animation."                },
@@ -82,9 +82,9 @@
         "error": {
             "change_amount_not_int_or_all": "Change Amount: Not an integer or 'all'. Min: 0, Max: 65535",
             "change_frequency_not_int_or_range": "Change Frequency: Not a number or range in format '[2,5]'. Use 0 to change the lights once and then stop. Otherwise, Min: 0.1, Max: 3600",
-            "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
+            "transition_not_int_or_range": "Transition Duration: Not a number or range in format '[2,5]'. Min: 0, Max: 6553",
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
-            "priority_not_int": "Priority: Not an integer",
+            "priority_not_int": "Priority: Must be a whole number from -1,000,000,000 to 1,000,000,000",
             "colors_is_blank": "Colors: Cannot be blank or empty",
             "colors_malformed": "Colors: Invalid format",
             "must_select_lights": "You must select at least one light for the animation",
@@ -92,7 +92,11 @@
             "scene_name_exists": "An animated scene with this name already exists"
         },
         "abort": {
-            "activity_sensor_exists": "An Animated Scenes Activity Sensor already exists"
+            "activity_sensor_exists": "An Animated Scenes Activity Sensor already exists",
+            "already_configured": "This YAML animated scene has already been imported",
+            "already_in_progress": "This YAML animated scene is already being imported",
+            "import_invalid": "The YAML animated scene could not be imported because its configuration is invalid. Check the Home Assistant log for details.",
+            "scene_name_exists": "The YAML animated scene was not imported because an animated scene with this name already exists"
         }
     },
     "options": {
@@ -116,15 +120,15 @@
                     "color_selector_mode": "Color Selector Mode*"
                 },
                 "data_description": {
-                    "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light.",
+                    "priority": "If multiple animations use the same light, the one with the higher priority will 'win' and take control of the light. Any whole number from -1,000,000,000 to 1,000,000,000.",
                     "transition": "How many seconds a light should take to transition from its former state to its new state. Can be a number or a range in the format of '[2, 5]' (means to transition the lights over 2 to 5 seconds). Min: 0, Max: 6553.",
                     "change_frequency": "After how many seconds the animation should change. Can be a number or a range in the format of '[2, 5]' (means to change lights every 2 to 5 seconds). Use 0 to change the lights once and then stop. Otherwise, Min: 0.1, Max: 3600.",
                     "change_amount": "How many lights should be changed each time the frequency is hit. Can be a number, a range in the format of '[2, 5]' (means to change between 2 to 5 lights), or specifying the word 'all' will change all lights each time. Min: 0, Max: 65535.",
-                    "ignore_off": "If a light in the animation list is off when the animation starts, turn it on. Defaults to True, meaning lights will be ignored if they are off.",
+                    "ignore_off": "When on, lights in the animation list are included even if they are off, and the animation turns them on. When off, lights that are off when the animation starts are skipped.",
                     "restore": "When the animation ends, restore lights to their prior state.",
                     "restore_power": "When the animation ends, turn any lights that were off back to off.",
                     "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
-                    "brightness": "Sets the brightness for the animated scene. Can be a number or a range in the format of '[125, 255]' (means to set each color's brightness to somewhere between 125 and 255). Min: 0, Max: 255.",
+                    "brightness": "Brightness used when Animate Brightness is off. Use a single number from 0 to 255; a range such as '[125, 255]' is ignored in that mode. When Animate Brightness is on, each color uses its own brightness instead (255 unless the color sets one).",
                     "animate_brightness": "Whether or not to animate the brightness. If false, brightness will be set once upon startup.",
                     "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
                     "lights": "The lights to include in the animation.",
@@ -165,9 +169,9 @@
         "error": {
             "change_amount_not_int_or_all": "Change Amount: Not an integer or 'all'. Min: 0, Max: 65535",
             "change_frequency_not_int_or_range": "Change Frequency: Not a number or range in format '[2,5]'. Use 0 to change the lights once and then stop. Otherwise, Min: 0.1, Max: 3600",
-            "transition_not_int_or_range": "Transition Duration: Not an integer or range in format '[2,5]'. Min: 0, Max: 6553",
+            "transition_not_int_or_range": "Transition Duration: Not a number or range in format '[2,5]'. Min: 0, Max: 6553",
             "brightness_not_int_or_range": "Brightness: Not an integer or range in format '[125,255]'. Min: 0, Max: 255",
-            "priority_not_int": "Priority: Not an integer",
+            "priority_not_int": "Priority: Must be a whole number from -1,000,000,000 to 1,000,000,000",
             "colors_is_blank": "Colors: Cannot be blank or empty",
             "colors_malformed": "Colors: Invalid format",
             "must_select_lights": "You must select at least one light for the animation",

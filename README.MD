@@ -44,9 +44,9 @@ Animated scenes are not Home Assistant scene entities. They are switch entities 
 1. Choose **Create a New Animated Scene**.
 1. Fill in the scene options and select the lights to animate.
 1. Choose a color selector mode:
-   - **RGB UI** for simple RGB color selection in the Home Assistant UI.
-   - **YAML** for advanced color types such as RGBW, RGBWW, XY, HS, and color temperature.
-1. Submit the color step to create the switch.
+   - **Use RGB Selectors** for simple RGB color selection in the Home Assistant UI.
+   - **Configure via YAML** for advanced color types such as RGBW, RGBWW, XY, HS, and color temperature.
+1. Submit the color step to create the switch. In the RGB selector step, check **Add Another Color** and submit to add more colors before finishing.
 
 The integration creates one switch entity per animated scene. Turning that switch on starts the animation. Turning it off stops the animation.
 
@@ -57,7 +57,7 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 | Option | What it does |
 | --- | --- |
 | `name` | The scene name. This is also the animation name used by services. |
-| `priority` | Higher-priority animations win when multiple animations want the same light. |
+| `priority` | Higher-priority animations win when multiple animations want the same light. Any whole number from `-1,000,000,000` to `1,000,000,000`. |
 | `transition` | How long each light transition takes, in seconds. |
 | `change_frequency` | How many seconds to wait between changes. Use a number or a range like `[2, 5]`, from `0.1` to `3600`. Use `0` to change the lights once and then stop. A range starting at `0` starts at `0.1` instead. |
 | `change_amount` | How many lights change each tick. Use a number, a range like `[1, 3]`, or `all`. |
@@ -74,12 +74,11 @@ Set `change_frequency: 0` to change the lights once and then stop. Normal restor
 
 ## Color Configuration
 
-For simple RGB animations, use the RGB UI color selector. You can add multiple colors and set each color's brightness, weight, nearby-color behavior, and one-change-per-tick behavior from the UI.
+For simple RGB animations, use the **Use RGB Selectors** color mode. You can add multiple colors (check **Add Another Color**) and set each color's brightness, weight, nearby-color behavior, and one-change-per-tick behavior from the UI.
 
-<details>
-<summary><h3>YAML</h3></summary>
+### YAML
 
-Use YAML color configuration when you need a color format other than RGB or want to paste a complete color list.
+Use **Configure via YAML** when you need a color format other than RGB or want to paste a complete color list.
 
 Each YAML color item supports these optional fields:
 
@@ -94,8 +93,11 @@ nearby_colors: 0
 | --- | --- |
 | `weight` | Higher values make that color more likely to be selected. |
 | `brightness` | A brightness value from `0` to `255`, or a range like `[70, 255]`. |
-| `one_change_per_tick` | When true, about half of the updates change only brightness. The other updates change the color, and the brightness too if brightness animation is on. Requires a brightness value on this color. The first update always applies the color. |
-| `nearby_colors` | For RGB colors, choose a nearby color instead of the exact color. Use `0` to disable, or `1` through `10` to increase the variation. |
+| `one_change_per_tick` | When true, about half of the updates change only brightness. The other updates change the color, and the brightness too if brightness animation is on. A color without its own `brightness` uses 255. The first update always applies the color. |
+| `nearby_colors` | For RGB, RGBW, RGBWW, HS, XY, and color temperature colors, choose a nearby color instead of the exact color. Use `0` to disable, or `1` through `10` to increase the variation. |
+
+<details>
+<summary>Color format examples</summary>
 
 ### RGB
 
@@ -269,10 +271,10 @@ Animated Scenes validates UI configuration and service calls before starting an 
 | --- | --- |
 | `transition` | `0` to `6553` seconds, or a two-item range like `[0.5, 2]`. |
 | `change_frequency` | `0` changes the lights once and then stops. Otherwise, a number or a range like `[2, 5]`, from `0.1` to `3600` seconds. A range starting at `0` starts at `0.1` instead. |
-| `priority` | Any whole number. |
+| `priority` | Any whole number from `-1,000,000,000` to `1,000,000,000`. |
 | `change_amount` | An integer, a two-item range like `[1, 3]`, or `all`. Values above the active light count change every active light without replacing the saved value. |
 | `brightness` | `0` to `255`, or a two-item range like `[70, 255]`. |
-| `colors` | At least one color is required. |
+| `colors` | At least one color is required. In random mode (`change_sequence` off) the total color `weight` must be positive; in sequence mode, zero weights are allowed. |
 | `lights` | At least one light is required. |
 
 When a scene is reloaded, removed, or unloaded, any matching running animation is stopped and its light ownership is released.

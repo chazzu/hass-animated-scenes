@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.config_entries import SOURCE_IMPORT, ConfigFlowResult
 from homeassistant.const import CONF_BRIGHTNESS, CONF_LIGHTS, CONF_NAME
 from homeassistant.core import HomeAssistant
 import pytest
@@ -20,9 +21,12 @@ from custom_components.animated_scenes.config_flow import (
 )
 from custom_components.animated_scenes.const import (
     ABORT_ACTIVITY_SENSOR_EXISTS,
+    ABORT_IMPORT_INVALID,
+    ABORT_IMPORT_SCENE_NAME_EXISTS,
     COLOR_SELECTOR_RGB_UI,
     COLOR_SELECTOR_YAML,
     CONF_COLOR,
+    CONF_COLOR_ADD_COLOR,
     CONF_COLOR_DELETE_COLOR,
     CONF_COLOR_NEARBY_COLORS,
     CONF_COLOR_RGB_DICT,
@@ -41,13 +45,17 @@ from custom_components.animated_scenes.const import (
     ERROR_BRIGHTNESS_NOT_INT_OR_RANGE,
     ERROR_COLORS_IS_BLANK,
     ERROR_COLORS_MALFORMED,
+    ERROR_PRIORITY_NOT_INT,
     ERROR_SCENE_NAME_BLANK,
     ERROR_SCENE_NAME_EXISTS,
+    PRIORITY_MAX,
+    PRIORITY_MIN,
 )
 from custom_components.animated_scenes.scene_config import (
     build_colors_from_rgb_dict,
     validate_start_service_data,
 )
+from custom_components.animated_scenes.switch import PLATFORM_SCHEMA
 
 from .helpers import animation_tasks, register_light_services
 
@@ -164,17 +172,160 @@ async def test_scene_creation_rejects_duplicate_name(hass: HomeAssistant) -> Non
     assert result["errors"] == {"base": ERROR_SCENE_NAME_EXISTS}
 
 
-async def test_scene_import_rejects_duplicate_name(hass: HomeAssistant) -> None:
-    """Reject an imported scene whose runtime name is already in use."""
-    _existing_scene(hass, "Spooky", "existing")
+def _yaml_scene(name: str = "Spooky", **overrides: object) -> dict[str, object]:
+    """Return a legacy YAML scene validated by the switch platform schema."""
+    return PLATFORM_SCHEMA(
+        {
+            CONF_PLATFORM: DOMAIN,
+            CONF_NAME: name,
+            CONF_LIGHTS: ["light.one"],
+            CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+            **overrides,
+        }
+    )
+
+
+async def _import_yaml_scene(hass: HomeAssistant, config: dict[str, object]) -> ConfigFlowResult:
+    """Run a YAML import flow through the flow manager and wait for setup."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_IMPORT}, data=config
+    )
+    await hass.async_block_till_done()
+    return result
+
+
+async def test_yaml_import_creates_scene_entry(hass: HomeAssistant) -> None:
+    """Import a YAML scene as a YAML-color entry keyed by its YAML name."""
+    result = await _import_yaml_scene(hass, _yaml_scene())
+
+    assert result["type"] == "create_entry"
+    entries = hass.config_entries.async_entries(DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].title == "Spooky"
+    assert entries[0].unique_id == "Spooky"
+    assert entries[0].data[CONF_NAME] == "Spooky"
+    assert entries[0].data[CONF_COLOR_SELECTOR_MODE] == COLOR_SELECTOR_YAML
+    assert entries[0].data[CONF_ENTITY_TYPE] == ENTITY_SCENE
+    assert hass.config_entries.flow.async_progress() == []
+
+
+@pytest.mark.parametrize(
+    ("name", "overrides", "existing_name", "reason"),
+    [
+        ("Spooky", {}, "Spooky", ABORT_IMPORT_SCENE_NAME_EXISTS),
+        ("Spooky", {CONF_TRANSITION: 99999}, None, ABORT_IMPORT_INVALID),
+        ("Spooky", {"priority": 10**20}, None, ABORT_IMPORT_INVALID),
+        ("   ", {}, None, ABORT_IMPORT_INVALID),
+    ],
+    ids=["duplicate_name", "invalid_transition", "huge_priority", "blank_name"],
+)
+async def test_yaml_import_aborts_when_scene_cannot_be_imported(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+    name: str,
+    overrides: dict[str, object],
+    existing_name: str | None,
+    reason: str,
+) -> None:
+    """End a rejected import with a logged abort instead of a pending form."""
+    if existing_name is not None:
+        _existing_scene(hass, existing_name, "existing")
+    config = {
+        CONF_PLATFORM: DOMAIN,
+        CONF_NAME: name,
+        CONF_LIGHTS: ["light.one"],
+        CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+        **overrides,
+    }
+
+    with caplog.at_level(logging.WARNING):
+        result = await _import_yaml_scene(hass, config)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == reason
+    assert hass.config_entries.flow.async_progress() == []
+    assert len(hass.config_entries.async_entries(DOMAIN)) == (1 if existing_name else 0)
+    assert "Not importing YAML animated scene" in caplog.text
+
+
+async def test_yaml_import_aborts_when_scene_was_already_imported(hass: HomeAssistant) -> None:
+    """Keep a renamed imported scene from being imported again under its YAML name."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        title="Renamed",
+        unique_id="Spooky",
+        source=SOURCE_IMPORT,
+        data={CONF_NAME: "Renamed", CONF_ENTITY_TYPE: ENTITY_SCENE},
+    ).add_to_hass(hass)
+
+    result = await _import_yaml_scene(hass, _yaml_scene())
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "already_configured"
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
+def test_import_abort_reasons_have_translations() -> None:
+    """Give every import abort reason user-facing text."""
+    translations = json.loads(TRANSLATIONS_PATH.read_text(encoding="utf-8"))
+
+    assert {
+        ABORT_IMPORT_INVALID,
+        ABORT_IMPORT_SCENE_NAME_EXISTS,
+        "already_configured",
+        "already_in_progress",
+    } <= set(translations["config"]["abort"])
+
+
+async def test_user_menu_creates_activity_sensor(hass: HomeAssistant) -> None:
+    """Offer the activity sensor in the user menu and create it when chosen."""
+    menu = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+
+    assert menu["type"] == "menu"
+    assert menu["menu_options"] == ["activity_sensor", "scene"]
+
+    result = await hass.config_entries.flow.async_configure(
+        menu["flow_id"], {"next_step_id": "activity_sensor"}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == "Activity Sensor"
+    entries = hass.config_entries.async_entries(DOMAIN)
+    assert [entry.data[CONF_ENTITY_TYPE] for entry in entries] == [ENTITY_ACTIVITY_SENSOR]
+
+
+@pytest.mark.parametrize("priority", [PRIORITY_MAX + 1, 1e20], ids=["just_over", "huge"])
+async def test_scene_flows_reject_out_of_range_priority(
+    hass: HomeAssistant, priority: float
+) -> None:
+    """Show the priority error and keep an unstorable priority out of the entry."""
+    flow = AnimatedScenesConfigFlow()
+    flow.hass = hass
+    options_flow, entry = _options_flow(hass, extra={"priority": 5})
+
+    config_result = await flow.async_step_scene({**_scene_input("Scary"), "priority": priority})
+    options_result = await options_flow.async_step_scene(
+        {CONF_NAME: "Spooky", "priority": priority}
+    )
+
+    for result in (config_result, options_result):
+        assert result["type"] == "form"
+        assert result["step_id"] == "scene"
+        assert result["errors"] == {"base": ERROR_PRIORITY_NOT_INT}
+    assert entry.data["priority"] == 5
+    assert [item.entry_id for item in hass.config_entries.async_entries(DOMAIN)] == ["spooky"]
+
+
+async def test_scene_flow_accepts_priority_at_range_limit(hass: HomeAssistant) -> None:
+    """Accept the lowest documented priority and store it as an integer."""
     flow = AnimatedScenesConfigFlow()
     flow.hass = hass
 
-    result = await flow.async_step_import(_scene_input("Spooky"))
+    result = await flow.async_step_scene({**_scene_input("Scary"), "priority": float(PRIORITY_MIN)})
 
-    assert result["type"] == "form"
-    assert result["step_id"] == "scene"
-    assert result["errors"] == {"base": ERROR_SCENE_NAME_EXISTS}
+    assert result["step_id"] == "color_yaml"
+    assert flow._data["priority"] == PRIORITY_MIN
 
 
 async def test_yaml_creation_rechecks_duplicate_name_before_create(
@@ -253,6 +404,56 @@ async def test_options_rename_rechecks_duplicate_name_before_update(
     update_entry.assert_not_called()
     reload_entry.assert_not_awaited()
     assert entry.data[CONF_NAME] == "Spooky"
+
+
+async def test_options_rename_records_yaml_name_of_legacy_import(hass: HomeAssistant) -> None:
+    """Record an older imported scene's YAML name before a rename replaces its title."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Spooky",
+        source=SOURCE_IMPORT,
+        data={
+            CONF_NAME: "Spooky",
+            CONF_ENTITY_TYPE: ENTITY_SCENE,
+            CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_YAML,
+            CONF_LIGHTS: ["light.one"],
+        },
+    )
+    entry.add_to_hass(hass)
+    flow = AnimatedScenesOptionsFlowHandler(entry)
+    flow.hass = hass
+
+    await flow.async_step_scene({CONF_NAME: "Scary"})
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()):
+        result = await flow.async_step_color_yaml(
+            {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]}
+        )
+
+    assert result["type"] == "create_entry"
+    assert entry.title == "Scary"
+    assert entry.unique_id == "Spooky"
+
+
+async def test_options_rgb_ui_counts_added_colors(hass: HomeAssistant) -> None:
+    """Count an added color in the total instead of showing "Color #2 of 1"."""
+    flow, _ = _options_flow(
+        hass,
+        selector_mode=COLOR_SELECTOR_RGB_UI,
+        color_rgb_dict={"one": {CONF_COLOR: [255, 0, 0]}},
+    )
+
+    first = await flow.async_step_color_rgb_ui()
+    second = await flow.async_step_color_rgb_ui(
+        {CONF_COLOR: [255, 0, 0], CONF_COLOR_ADD_COLOR: True}
+    )
+
+    assert first["description_placeholders"] is not None
+    assert first["description_placeholders"]["color_count"] == "1"
+    assert first["description_placeholders"]["color_max"] == "1"
+    assert second["type"] == "form"
+    assert second["description_placeholders"] is not None
+    assert second["description_placeholders"]["color_count"] == "2"
+    assert second["description_placeholders"]["color_max"] == "2"
 
 
 async def test_options_rgb_ui_handles_empty_existing_color_dict(hass: HomeAssistant) -> None:

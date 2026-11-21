@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import copy
 import math
 from typing import Any
@@ -14,7 +15,8 @@ from homeassistant.components.light import (
     ATTR_RGBWW_COLOR,
     ATTR_XY_COLOR,
 )
-from homeassistant.const import CONF_BRIGHTNESS, CONF_LIGHTS, CONF_NAME
+from homeassistant.const import CONF_BRIGHTNESS, CONF_ICON, CONF_LIGHTS, CONF_NAME
+from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
@@ -27,6 +29,7 @@ from .const import (
     CHANGE_FREQUENCY_MAX,
     CHANGE_FREQUENCY_MIN,
     CHANGE_FREQUENCY_REPEAT_MIN,
+    COLOR_TEMPERATURE_MAX,
     CONF_ANIMATE_BRIGHTNESS,
     CONF_ANIMATE_COLOR,
     CONF_ANIMATED_SCENE_SWITCH,
@@ -39,10 +42,14 @@ from .const import (
     CONF_COLOR_NEARBY_COLORS,
     CONF_COLOR_ONE_CHANGE_PER_TICK,
     CONF_COLOR_RGB,
+    CONF_COLOR_RGB_DICT,
+    CONF_COLOR_SELECTOR_MODE,
     CONF_COLOR_TYPE,
     CONF_COLOR_WEIGHT,
     CONF_COLORS,
+    CONF_ENTITY_TYPE,
     CONF_IGNORE_OFF,
+    CONF_PLATFORM,
     CONF_PRIORITY,
     CONF_RESTORE,
     CONF_RESTORE_POWER,
@@ -62,6 +69,8 @@ from .const import (
     DEFAULT_RESTORE,
     DEFAULT_RESTORE_POWER,
     DEFAULT_TRANSITION,
+    DOMAIN,
+    ENTITY_SCENE,
     ERROR_BRIGHTNESS_NOT_INT_OR_RANGE,
     ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL,
     ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE,
@@ -69,6 +78,8 @@ from .const import (
     ERROR_MUST_SELECT_LIGHTS,
     ERROR_PRIORITY_NOT_INT,
     ERROR_TRANSITION_NOT_INT_OR_RANGE,
+    PRIORITY_MAX,
+    PRIORITY_MIN,
     TRANSITION_MAX,
     TRANSITION_MIN,
 )
@@ -87,6 +98,15 @@ SCENE_DEFAULTS: dict[str, Any] = {
     CONF_PRIORITY: DEFAULT_PRIORITY,
 }
 
+# Config-entry keys that describe the entry or its UI, not the running animation.
+ENTRY_ONLY_KEYS: tuple[str, ...] = (
+    CONF_PLATFORM,
+    CONF_ICON,
+    CONF_ENTITY_TYPE,
+    CONF_COLOR_RGB_DICT,
+    CONF_COLOR_SELECTOR_MODE,
+)
+
 NUMBER_RANGE_PATTERN = r"^\[\s*(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*(?:\d+(?:\.\d+)?|\.\d+)\s*\]$"
 INT_RANGE_PATTERN = r"^\[\s*\d+\s*,\s*\d+\s*\]$"
 
@@ -102,6 +122,81 @@ def _strlist_to_list(value: str) -> list[str]:
         preserved for the caller's typed validation to reject.
     """
     return [item.strip() for item in value.strip("][").split(",")]
+
+
+def scene_name_exists(hass: HomeAssistant, name: str, exclude_entry_id: str | None = None) -> bool:
+    """Return whether another scene config entry already uses a name.
+
+    Args:
+        hass: Home Assistant instance containing config entries.
+        name: Proposed runtime scene name.
+        exclude_entry_id: Entry id to ignore while validating an options rename.
+
+    Returns:
+        True when another Animated Scenes scene entry uses the proposed name.
+
+    """
+    return any(
+        entry.entry_id != exclude_entry_id
+        and entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_SCENE
+        and entry.data.get(CONF_NAME) == name
+        for entry in hass.config_entries.async_entries(DOMAIN)
+    )
+
+
+def runtime_scene_config(data: dict[str, Any]) -> dict[str, Any]:
+    """Return scene data without the keys that only describe the config entry.
+
+    Args:
+        data: Config-entry or flow scene data.
+
+    Returns:
+        A shallow copy of ``data`` without ``ENTRY_ONLY_KEYS``.
+
+    """
+    return {key: value for key, value in data.items() if key not in ENTRY_ONLY_KEYS}
+
+
+def _safe_coerce(target: type[float | int]) -> Callable[[Any], float | int]:
+    """Build a numeric coercer that reports every conversion failure as invalid.
+
+    ``vol.Coerce`` lets ``OverflowError`` escape (for example ``float(10**400)``
+    or ``int(float("inf"))``), which would surface as an unexpected exception
+    instead of a validation error.
+
+    Args:
+        target: Numeric type to convert values to.
+
+    Returns:
+        A validator that converts a value to ``target`` or raises ``vol.Invalid``.
+
+    """
+
+    def _coerce(value: Any) -> float | int:
+        """Convert a value to the target numeric type.
+
+        Args:
+            value: Raw value from a flow, service call, or YAML.
+
+        Returns:
+            The converted value.
+
+        Raises:
+            vol.Invalid: If the value cannot be converted.
+
+        """
+        try:
+            return target(value)
+        except (OverflowError, TypeError, ValueError) as err:
+            raise vol.Invalid(f"expected {target.__name__}") from err
+
+    return _coerce
+
+
+_coerce_float = _safe_coerce(float)
+_coerce_int = _safe_coerce(int)
+_BYTE_SCHEMA = vol.All(_coerce_int, vol.Range(min=0, max=255))
+_SMALL_FLOAT_SCHEMA = vol.All(_coerce_float, vol.Range(min=0, max=1))
 
 
 def _whole_float_to_int(value: float) -> int:
@@ -150,13 +245,18 @@ def _priority_to_int(value: Any) -> int:
         Integer representation of the priority.
 
     Raises:
-        vol.Invalid: If the value is not numeric or has a fractional component.
+        vol.Invalid: If the value is not numeric, has a fractional component,
+            or is outside ``PRIORITY_MIN`` to ``PRIORITY_MAX``.
 
     """
     try:
-        return _whole_float_to_int(float(value))
-    except (TypeError, ValueError, vol.Invalid) as err:
+        # Keep integers exact; a float round-trip would round large values.
+        priority = value if isinstance(value, int) else _whole_float_to_int(float(value))
+    except (OverflowError, TypeError, ValueError, vol.Invalid) as err:
         raise vol.Invalid(ERROR_PRIORITY_NOT_INT) from err
+    if not PRIORITY_MIN <= priority <= PRIORITY_MAX:
+        raise vol.Invalid(ERROR_PRIORITY_NOT_INT)
+    return int(priority)
 
 
 def _lift_zero_frequency_range(value: Any) -> Any:
@@ -183,7 +283,7 @@ def _lift_zero_frequency_range(value: Any) -> Any:
         return value
     try:
         bounds = [float(item) for item in items]
-    except TypeError, ValueError:
+    except OverflowError, TypeError, ValueError:
         return value
     if min(bounds) != CHANGE_FREQUENCY_MIN:
         return value
@@ -193,29 +293,27 @@ def _lift_zero_frequency_range(value: Any) -> Any:
 
 
 BRIGHTNESS_VALUE_SCHEMA = vol.All(
-    vol.Coerce(float),
+    _coerce_float,
     _whole_float_to_int,
     vol.Range(min=BRIGHTNESS_MIN, max=BRIGHTNESS_MAX),
 )
-TRANSITION_VALUE_SCHEMA = vol.All(
-    vol.Coerce(float), vol.Range(min=TRANSITION_MIN, max=TRANSITION_MAX)
-)
+TRANSITION_VALUE_SCHEMA = vol.All(_coerce_float, vol.Range(min=TRANSITION_MIN, max=TRANSITION_MAX))
 CHANGE_FREQUENCY_VALUE_SCHEMA = vol.All(
-    vol.Coerce(float),
+    _coerce_float,
     vol.Any(
         vol.Equal(CHANGE_FREQUENCY_MIN),
         vol.Range(min=CHANGE_FREQUENCY_REPEAT_MIN, max=CHANGE_FREQUENCY_MAX),
     ),
 )
 CHANGE_FREQUENCY_RANGE_VALUE_SCHEMA = vol.All(
-    vol.Coerce(float),
+    _coerce_float,
     vol.Range(
         min=CHANGE_FREQUENCY_REPEAT_MIN,
         max=CHANGE_FREQUENCY_MAX,
     ),
 )
 CHANGE_AMOUNT_VALUE_SCHEMA = vol.All(
-    vol.Coerce(float),
+    _coerce_float,
     _whole_float_to_int,
     vol.Range(min=CHANGE_AMOUNT_MIN, max=CHANGE_AMOUNT_MAX),
 )
@@ -340,7 +438,7 @@ START_SERVICE_CONFIG = {
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_RGB_COLOR,
                         vol.Required(CONF_COLOR): vol.All(
-                            vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 3)
+                            vol.Coerce(tuple), vol.ExactSequence((_BYTE_SCHEMA,) * 3)
                         ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
@@ -348,7 +446,7 @@ START_SERVICE_CONFIG = {
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_RGBW_COLOR,
                         vol.Required(CONF_COLOR): vol.All(
-                            vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 4)
+                            vol.Coerce(tuple), vol.ExactSequence((_BYTE_SCHEMA,) * 4)
                         ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
@@ -356,7 +454,7 @@ START_SERVICE_CONFIG = {
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_RGBWW_COLOR,
                         vol.Required(CONF_COLOR): vol.All(
-                            vol.Coerce(tuple), vol.ExactSequence((cv.byte,) * 5)
+                            vol.Coerce(tuple), vol.ExactSequence((_BYTE_SCHEMA,) * 5)
                         ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
@@ -365,7 +463,7 @@ START_SERVICE_CONFIG = {
                         vol.Required(CONF_COLOR_TYPE): ATTR_XY_COLOR,
                         vol.Required(CONF_COLOR): vol.All(
                             vol.Coerce(tuple),
-                            vol.ExactSequence((cv.small_float, cv.small_float)),
+                            vol.ExactSequence((_SMALL_FLOAT_SCHEMA, _SMALL_FLOAT_SCHEMA)),
                         ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
@@ -376,8 +474,8 @@ START_SERVICE_CONFIG = {
                             vol.Coerce(tuple),
                             vol.ExactSequence(
                                 (
-                                    vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
-                                    vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
+                                    vol.All(_coerce_float, vol.Range(min=0, max=360)),
+                                    vol.All(_coerce_float, vol.Range(min=0, max=100)),
                                 )
                             ),
                         ),
@@ -387,7 +485,9 @@ START_SERVICE_CONFIG = {
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP,
                         vol.Required(CONF_COLOR): vol.All(
-                            _reject_non_finite_float, vol.Coerce(int), vol.Range(min=1)
+                            _reject_non_finite_float,
+                            _coerce_int,
+                            vol.Range(min=1, max=COLOR_TEMPERATURE_MAX),
                         ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
@@ -395,7 +495,9 @@ START_SERVICE_CONFIG = {
                     {
                         vol.Required(CONF_COLOR_TYPE): ATTR_COLOR_TEMP_KELVIN,
                         vol.Required(CONF_COLOR): vol.All(
-                            _reject_non_finite_float, cv.positive_int
+                            _reject_non_finite_float,
+                            _coerce_int,
+                            vol.Range(min=0, max=COLOR_TEMPERATURE_MAX),
                         ),
                     }
                 ).extend(COLOR_GROUP_SCHEMA),
@@ -425,9 +527,12 @@ def is_int(value: Any) -> tuple[bool, Any]:
     """Return whether value is integer-like and its normalized value."""
     if value is None or not isinstance(value, int | float | str):
         return False, value
+    if isinstance(value, int):
+        # Keep integers exact; a float round-trip can overflow or round them.
+        return True, int(value)
     try:
         parsed = float(value)
-    except TypeError, ValueError:
+    except OverflowError, TypeError, ValueError:
         return False, value
     if parsed.is_integer():
         return True, int(parsed)
@@ -443,7 +548,7 @@ def is_number(value: Any) -> tuple[bool, Any]:
         return False, value
     try:
         parsed = float(value)
-    except TypeError, ValueError:
+    except OverflowError, TypeError, ValueError:
         return False, value
     if not math.isfinite(parsed):
         return False, value

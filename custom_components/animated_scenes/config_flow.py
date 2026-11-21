@@ -10,9 +10,15 @@ from functools import partial
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    SOURCE_IMPORT,
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_BRIGHTNESS, CONF_ICON, CONF_LIGHTS, CONF_NAME, Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import callback
 from homeassistant.helpers import selector
 import homeassistant.helpers.config_validation as cv
 from homeassistant.util import uuid
@@ -22,6 +28,8 @@ from .animations import Animations
 from .const import (
     ABORT_ACTIVITY_SENSOR_EXISTS,
     ABORT_ACTIVITY_SENSOR_NO_OPTIONS,
+    ABORT_IMPORT_INVALID,
+    ABORT_IMPORT_SCENE_NAME_EXISTS,
     BRIGHTNESS_MAX,
     BRIGHTNESS_MIN,
     COLOR_SELECTOR_RGB_UI,
@@ -43,7 +51,6 @@ from .const import (
     CONF_COLORS,
     CONF_ENTITY_TYPE,
     CONF_IGNORE_OFF,
-    CONF_PLATFORM,
     CONF_PRIORITY,
     CONF_RESTORE,
     CONF_RESTORE_POWER,
@@ -73,6 +80,8 @@ from .const import (
     ERROR_COLORS_MALFORMED,
     ERROR_SCENE_NAME_BLANK,
     ERROR_SCENE_NAME_EXISTS,
+    PRIORITY_MAX,
+    PRIORITY_MIN,
 )
 from .scene_config import (
     SCENE_DEFAULTS,
@@ -81,6 +90,8 @@ from .scene_config import (
     is_int_or_list,
     list_or_int_to_str,
     normalize_scene_input,
+    runtime_scene_config,
+    scene_name_exists,
     validate_start_service_data,
 )
 
@@ -99,26 +110,6 @@ RGB_UI_COLOR_DEFAULTS = {
 }
 
 
-def _scene_name_exists(hass: HomeAssistant, name: str, exclude_entry_id: str | None = None) -> bool:
-    """Return whether another scene config entry already uses a name.
-
-    Args:
-        hass: Home Assistant instance containing config entries.
-        name: Proposed runtime scene name.
-        exclude_entry_id: Entry id to ignore while validating an options rename.
-
-    Returns:
-        True when another Animated Scenes scene entry uses the proposed name.
-
-    """
-    return any(
-        entry.entry_id != exclude_entry_id
-        and entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_SCENE
-        and entry.data.get(CONF_NAME) == name
-        for entry in hass.config_entries.async_entries(DOMAIN)
-    )
-
-
 def _validate_yaml_runtime_data(data: dict[str, Any]) -> None:
     """Validate YAML color data using runtime fields only.
 
@@ -129,13 +120,7 @@ def _validate_yaml_runtime_data(data: dict[str, Any]) -> None:
         vol.Invalid: If the runtime service schema rejects the color data.
 
     """
-    runtime_data = dict(data)
-    runtime_data.pop(CONF_COLOR_RGB_DICT, None)
-    runtime_data.pop(CONF_COLOR_SELECTOR_MODE, None)
-    runtime_data.pop(CONF_ENTITY_TYPE, None)
-    runtime_data.pop(CONF_ICON, None)
-    runtime_data.pop(CONF_PLATFORM, None)
-    validate_start_service_data(runtime_data)
+    validate_start_service_data(runtime_scene_config(data))
 
 
 def _validate_color_yaml_data(data: dict[str, Any]) -> str | None:
@@ -262,6 +247,8 @@ def _build_schema(
                 default=default(CONF_PRIORITY, DEFAULT_PRIORITY),
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
+                    min=PRIORITY_MIN,
+                    max=PRIORITY_MAX,
                     step=1,
                     mode=selector.NumberSelectorMode.BOX,
                 )
@@ -493,7 +480,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
             if not str(self._data[CONF_NAME]).strip():
                 errors["base"] = ERROR_SCENE_NAME_BLANK
-            elif _scene_name_exists(self.hass, self._data[CONF_NAME]):
+            elif scene_name_exists(self.hass, self._data[CONF_NAME]):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS
             else:
                 try:
@@ -502,10 +489,9 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["base"] = str(err)
             for k, v in defaults.items():
                 self._data.setdefault(k, v)
+            if yaml_import:
+                return self._async_finish_import(errors)
             if not errors:
-                if yaml_import:
-                    self._data.update({CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_YAML})
-                    return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
                 if (
                     self._data.get(CONF_COLOR_SELECTOR_MODE, COLOR_SELECTOR_RGB_UI)
                     == COLOR_SELECTOR_RGB_UI
@@ -537,7 +523,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             if error := _validate_color_yaml_data(self._data):
                 errors["base"] = error
-            if not errors and _scene_name_exists(self.hass, self._data[CONF_NAME]):
+            if not errors and scene_name_exists(self.hass, self._data[CONF_NAME]):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS
             if not errors:
                 return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
@@ -575,7 +561,7 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
                 if error := _validate_rgb_ui_runtime_data(candidate_data):
                     errors["base"] = error
-                elif _scene_name_exists(self.hass, self._data[CONF_NAME]):
+                elif scene_name_exists(self.hass, self._data[CONF_NAME]):
                     errors["base"] = ERROR_SCENE_NAME_EXISTS
                 else:
                     self._data = candidate_data
@@ -590,13 +576,54 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
+    def _async_finish_import(self, errors: dict[str, Any]) -> ConfigFlowResult:
+        """Create the imported scene entry, or abort when it cannot be imported.
+
+        Import flows have no user to answer a form, so every validation error
+        ends the flow with a logged abort instead of leaving it pending.
+
+        Args:
+            errors: Validation errors from the scene step, keyed by ``base``.
+
+        Returns:
+            The created entry, or an abort result naming why the import failed.
+
+        """
+        name = self._data.get(CONF_NAME)
+        if (error := errors.get("base")) == ERROR_SCENE_NAME_EXISTS:
+            _LOGGER.warning(
+                "Not importing YAML animated scene %s: a scene with this name already exists",
+                name,
+            )
+            return self.async_abort(reason=ABORT_IMPORT_SCENE_NAME_EXISTS)
+        if error:
+            _LOGGER.warning("Not importing YAML animated scene %s: %s", name, error)
+            return self.async_abort(reason=ABORT_IMPORT_INVALID)
+        self._data.update({CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_YAML})
+        return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
+
     async def async_step_import(
         self, import_config: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Import a config entry from configuration.yaml."""
-        if import_config:
-            import_config.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
-            _LOGGER.debug("[async_step_import] import_config: %s", import_config)
+        """Import a config entry from configuration.yaml.
+
+        Args:
+            import_config: Legacy YAML scene configuration validated by the
+                switch platform schema.
+
+        Returns:
+            The created entry, or an abort when the scene was already imported
+            or cannot be imported.
+
+        """
+        if not import_config:
+            _LOGGER.warning("Not importing YAML animated scene: no configuration was given")
+            return self.async_abort(reason=ABORT_IMPORT_INVALID)
+        import_config.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
+        _LOGGER.debug("[async_step_import] import_config: %s", import_config)
+        # The YAML name identifies the imported entry even after a UI rename.
+        await self.async_set_unique_id(str(import_config.get(CONF_NAME)))
+        self._abort_if_unique_id_configured()
         return await self.async_step_scene(user_input=import_config, yaml_import=True)
 
     @staticmethod
@@ -633,6 +660,30 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         ):
             await manager.stop_by_name(previous_name)
 
+    def _async_save_entry(self) -> None:
+        """Store the edited scene data and keep the entry title in sync.
+
+        A YAML-imported entry created before imports recorded their YAML name
+        keeps that name in its title, so it is recorded as the unique id before
+        a rename overwrites the title. This keeps the YAML scene from being
+        imported again on the next restart.
+        """
+        update: dict[str, Any] = {
+            "data": self._data,
+            "options": self.config.options,
+            "title": self._data[CONF_NAME],
+        }
+        if (
+            self.config.source == SOURCE_IMPORT
+            and self.config.unique_id is None
+            and not any(
+                entry.unique_id == self.config.title
+                for entry in self.hass.config_entries.async_entries(DOMAIN)
+            )
+        ):
+            update["unique_id"] = self.config.title
+        self.hass.config_entries.async_update_entry(self.config, **update)
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
         if self._data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_ACTIVITY_SENSOR:
@@ -655,7 +706,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             self._data.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
             if not str(self._data[CONF_NAME]).strip():
                 errors["base"] = ERROR_SCENE_NAME_BLANK
-            elif _scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
+            elif scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS
             else:
                 try:
@@ -697,19 +748,14 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             self._data.update(user_input)
             if error := _validate_color_yaml_data(self._data):
                 errors["base"] = error
-            if not errors and _scene_name_exists(
+            if not errors and scene_name_exists(
                 self.hass, self._data[CONF_NAME], self.config.entry_id
             ):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS
             if not errors:
                 self._data.update({CONF_COLOR_RGB_DICT: {}})
                 await self._async_stop_previous_animation_if_renamed()
-                self.hass.config_entries.async_update_entry(
-                    self.config,
-                    data=self._data,
-                    options=self.config.options,
-                    title=self._data[CONF_NAME],
-                )
+                self._async_save_entry()
                 await self.hass.config_entries.async_reload(self.config.entry_id)
                 return self.async_create_entry(title="", data={})
 
@@ -747,9 +793,8 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                     **self._data.get(CONF_COLOR_RGB_DICT, {}),
                     color_key: color_data,
                 }
-                if self._rgb_ui_color_index + 1 < self._rgb_ui_color_max or (
-                    self._rgb_ui_color_index + 1 >= self._rgb_ui_color_max
-                    and color_data.get(CONF_COLOR_ADD_COLOR, False)
+                if self._rgb_ui_color_index + 1 < self._rgb_ui_color_max or color_data.get(
+                    CONF_COLOR_ADD_COLOR, False
                 ):
                     self._data[CONF_COLOR_RGB_DICT] = color_rgb_dict
                     self._rgb_ui_color_index += 1
@@ -764,17 +809,12 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                     errors["base"] = ERROR_COLORS_IS_BLANK
                 elif error := _validate_rgb_ui_runtime_data(candidate_data):
                     errors["base"] = error
-                elif _scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
+                elif scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
                     errors["base"] = ERROR_SCENE_NAME_EXISTS
                 if not errors:
                     self._data = candidate_data
                     await self._async_stop_previous_animation_if_renamed()
-                    self.hass.config_entries.async_update_entry(
-                        self.config,
-                        data=self._data,
-                        options=self.config.options,
-                        title=self._data[CONF_NAME],
-                    )
+                    self._async_save_entry()
                     await self.hass.config_entries.async_reload(self.config.entry_id)
                     return self.async_create_entry(title="", data={})
 
@@ -790,6 +830,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             description_placeholders={
                 "component_color_config_url": COMPONENT_COLOR_CONFIG_URL,
                 "color_count": str(self._rgb_ui_color_index + 1),
-                "color_max": str(self._rgb_ui_color_max),
+                # Added colors extend the stored list, so never show "#2 of 1".
+                "color_max": str(max(self._rgb_ui_color_max, self._rgb_ui_color_index + 1)),
             },
         )

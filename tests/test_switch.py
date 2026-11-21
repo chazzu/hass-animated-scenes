@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from datetime import timedelta
 import logging
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.config_entries import SOURCE_IMPORT
 from homeassistant.const import CONF_NAME, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 import voluptuous as vol
 
 from custom_components.animated_scenes.animations import Animations
@@ -255,3 +258,93 @@ async def test_switch_syncs_with_scene_started_before_entry_setup(hass: HomeAssi
     await hass.async_block_till_done()
     assert calls == []
     await manager.stop({CONF_NAME: "Spooky"})
+
+
+@pytest.mark.parametrize(
+    ("existing", "yaml_name", "imported"),
+    [
+        ({"title": "Renamed", "unique_id": "Spooky", "name": "Renamed"}, "Spooky", False),
+        ({"title": "Spooky", "unique_id": None, "name": "Renamed"}, "Spooky", False),
+        ({"title": "Other", "unique_id": None, "name": "Spooky"}, "Spooky", False),
+        ({"title": "Renamed", "unique_id": "Spooky", "name": "Renamed"}, "Fresh", True),
+    ],
+    ids=["renamed_import", "legacy_renamed_import", "same_scene_name", "new_scene"],
+)
+async def test_yaml_setup_imports_only_scenes_without_entries(
+    hass: HomeAssistant,
+    existing: dict[str, str | None],
+    yaml_name: str,
+    imported: bool,
+) -> None:
+    """Skip a YAML scene that already has an entry, even after a UI rename."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        version=2,
+        title=existing["title"],
+        unique_id=existing["unique_id"],
+        source=SOURCE_IMPORT,
+        data={CONF_NAME: existing["name"], "entity_type": "scene"},
+    ).add_to_hass(hass)
+    config = PLATFORM_SCHEMA(
+        {
+            "platform": DOMAIN,
+            "name": yaml_name,
+            "lights": ["light.one"],
+            "colors": [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+        }
+    )
+
+    with patch.object(hass.config_entries, "async_setup", AsyncMock(return_value=True)):
+        await async_setup_platform(hass, config, AsyncMock())
+        await hass.async_block_till_done()
+
+    names = sorted(entry.data[CONF_NAME] for entry in hass.config_entries.async_entries(DOMAIN))
+    assert names == sorted([str(existing["name"]), *([yaml_name] if imported else [])])
+    assert hass.config_entries.flow.async_progress() == []
+
+
+async def test_switch_turn_off_stops_running_scene(hass: HomeAssistant) -> None:
+    """Stop the scene's animation and show the switch off after turn-off."""
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    data = _switch_config()
+    data["change_frequency"] = 3600
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Spooky", data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    manager = Animations.instance
+    assert manager is not None
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    on_state = hass.states.get("switch.animated_scenes_spooky")
+    calls.clear()
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert on_state is not None
+    assert on_state.state == STATE_ON
+    off_state = hass.states.get("switch.animated_scenes_spooky")
+    assert off_state is not None
+    assert off_state.state == STATE_OFF
+    assert manager.animations == {}
+    assert [call["rgb_color"] for call in calls] == [(1, 2, 3)]
+
+
+async def test_switch_state_is_not_polled(hass: HomeAssistant) -> None:
+    """Rely on animation events for state instead of a periodic poll."""
+    entry = MockConfigEntry(domain=DOMAIN, version=2, title="Spooky", data=_switch_config())
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with patch.object(AnimatedSceneSwitch, "async_update_ha_state", AsyncMock()) as update:
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=5))
+        await hass.async_block_till_done()
+
+    update.assert_not_awaited()

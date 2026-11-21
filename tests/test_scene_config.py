@@ -23,6 +23,8 @@ from custom_components.animated_scenes.const import (
     DEFAULT_PRIORITY,
     DEFAULT_RESTORE,
     DEFAULT_RESTORE_POWER,
+    PRIORITY_MAX,
+    PRIORITY_MIN,
 )
 from custom_components.animated_scenes.scene_config import (
     START_SERVICE_SCHEMA,
@@ -305,7 +307,28 @@ def test_validate_start_service_data_accepts_integral_change_amount(
     assert result[CONF_CHANGE_AMOUNT] == expected
 
 
-@pytest.mark.parametrize((CONF_PRIORITY, "expected"), [(1.0, 1), ("1.0", 1), ("-2", -2)])
+PRIORITY_BOUNDARIES = [
+    (PRIORITY_MAX, PRIORITY_MAX),
+    (PRIORITY_MIN, PRIORITY_MIN),
+    ("1e9", PRIORITY_MAX),
+]
+# Integers beyond 64 bits cannot be saved in config entries, and huge Python
+# integers overflow float conversion; both must be ordinary validation errors.
+OUT_OF_RANGE_PRIORITIES = [
+    PRIORITY_MAX + 1,
+    PRIORITY_MIN - 1,
+    10**20,
+    1e20,
+    "1e20",
+    10**400,
+    float("inf"),
+    float("nan"),
+]
+
+
+@pytest.mark.parametrize(
+    (CONF_PRIORITY, "expected"), [(1.0, 1), ("1.0", 1), ("-2", -2), *PRIORITY_BOUNDARIES]
+)
 def test_validate_start_service_data_accepts_integral_priority(
     priority: object, expected: int
 ) -> None:
@@ -318,9 +341,9 @@ def test_validate_start_service_data_accepts_integral_priority(
     assert result[CONF_PRIORITY] == expected
 
 
-@pytest.mark.parametrize(CONF_PRIORITY, ["high", 1.5, "1.5", -2.5])
+@pytest.mark.parametrize(CONF_PRIORITY, ["high", 1.5, "1.5", -2.5, *OUT_OF_RANGE_PRIORITIES])
 def test_validate_start_service_data_rejects_invalid_priority(priority: object) -> None:
-    """Reject nonnumeric and fractional priorities at the service boundary."""
+    """Reject nonnumeric, fractional, and out-of-range priorities at the service boundary."""
     data = normalize_scene_input(_base_input())
     data[CONF_PRIORITY] = priority
 
@@ -328,7 +351,9 @@ def test_validate_start_service_data_rejects_invalid_priority(priority: object) 
         validate_start_service_data(data)
 
 
-@pytest.mark.parametrize((CONF_PRIORITY, "expected"), [(1, 1), (1.0, 1), ("-2.0", -2)])
+@pytest.mark.parametrize(
+    (CONF_PRIORITY, "expected"), [(1, 1), (1.0, 1), ("-2.0", -2), *PRIORITY_BOUNDARIES]
+)
 def test_normalize_scene_input_accepts_integral_priority(priority: object, expected: int) -> None:
     """Normalize integral priority forms consistently before manager validation."""
     data = _base_input()
@@ -339,9 +364,9 @@ def test_normalize_scene_input_accepts_integral_priority(priority: object, expec
     assert result[CONF_PRIORITY] == expected
 
 
-@pytest.mark.parametrize(CONF_PRIORITY, [1.5, "1.5", -2.5])
-def test_normalize_scene_input_rejects_fractional_priority(priority: object) -> None:
-    """Reject fractional priorities before the manager can round them."""
+@pytest.mark.parametrize(CONF_PRIORITY, [1.5, "1.5", -2.5, *OUT_OF_RANGE_PRIORITIES])
+def test_normalize_scene_input_rejects_invalid_priority(priority: object) -> None:
+    """Reject fractional and out-of-range priorities before they are stored."""
     data = _base_input()
     data[CONF_PRIORITY] = priority
 
@@ -465,24 +490,12 @@ def test_build_colors_from_rgb_dict_converts_to_color_list() -> None:
     ]
 
 
-def test_clean_color_rgb_dict_copies_only_retained_color_records(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Clean RGB UI data without deep-copying the whole color mapping."""
+def test_clean_color_rgb_dict_copies_only_retained_color_records() -> None:
+    """Clean RGB UI data into independent copies of the retained colors."""
     color_rgb_dict = {
         "keep": {"color": [1, 2, 3], "color_delete_color": False},
         "delete": {"color": [4, 5, 6], "color_delete_color": True},
     }
-    copied_objects: list[object] = []
-    original_deepcopy = scene_config.copy.deepcopy
-
-    def track_deepcopy(value: object) -> object:
-        """Track copied objects while preserving deepcopy behavior."""
-        copied_objects.append(value)
-        return original_deepcopy(value)
-
-    monkeypatch.setattr(scene_config.copy, "deepcopy", track_deepcopy)
-
     result = clean_color_rgb_dict(color_rgb_dict)
 
     assert result == {"keep": {"color": [1, 2, 3]}}
@@ -490,27 +503,16 @@ def test_clean_color_rgb_dict_copies_only_retained_color_records(
         "keep": {"color": [1, 2, 3], "color_delete_color": False},
         "delete": {"color": [4, 5, 6], "color_delete_color": True},
     }
-    assert color_rgb_dict not in copied_objects
+    result["keep"]["color"].append(4)
+    assert color_rgb_dict["keep"]["color"] == [1, 2, 3]
 
 
-def test_build_colors_from_rgb_dict_copies_only_color_records(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Build runtime colors without deep-copying the whole color mapping."""
+def test_build_colors_from_rgb_dict_copies_only_color_records() -> None:
+    """Build runtime colors that do not alias the stored color records."""
     color_rgb_dict = {
         "one": {"color": [1, 2, 3], "brightness": 200, "weight": 10},
         "two": {"color": [4, 5, 6], "brightness": [100, 255], "weight": 5},
     }
-    copied_objects: list[object] = []
-    original_deepcopy = scene_config.copy.deepcopy
-
-    def track_deepcopy(value: object) -> object:
-        """Track copied objects while preserving deepcopy behavior."""
-        copied_objects.append(value)
-        return original_deepcopy(value)
-
-    monkeypatch.setattr(scene_config.copy, "deepcopy", track_deepcopy)
-
     result = build_colors_from_rgb_dict(color_rgb_dict)
 
     assert result == [
@@ -526,7 +528,8 @@ def test_build_colors_from_rgb_dict_copies_only_color_records(
         "one": {"color": [1, 2, 3], "brightness": 200, "weight": 10},
         "two": {"color": [4, 5, 6], "brightness": [100, 255], "weight": 5},
     }
-    assert color_rgb_dict not in copied_objects
+    result[1]["brightness"].append(1)
+    assert color_rgb_dict["two"]["brightness"] == [100, 255]
 
 
 @pytest.mark.parametrize("brightness", [[200, 100], "[200,100]"], ids=["list", "string"])
@@ -740,3 +743,67 @@ def test_color_temp_schema_rejects_non_finite(color_type: str, color: object) ->
                 CONF_COLORS: [{"color_type": color_type, "color": color}],
             }
         )
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "error"),
+    [
+        (CONF_BRIGHTNESS, 10**400, "brightness_not_int_or_range"),
+        (CONF_BRIGHTNESS, [0, 10**400], "brightness_not_int_or_range"),
+        (CONF_CHANGE_AMOUNT, 10**400, "change_amount_not_int_or_all"),
+        (CONF_TRANSITION, 10**400, "transition_not_int_or_range"),
+        (CONF_TRANSITION, [1, 10**400], "transition_not_int_or_range"),
+        (CONF_CHANGE_FREQUENCY, 10**400, "change_frequency_not_int_or_range"),
+        (CONF_CHANGE_FREQUENCY, [0, 10**400], "change_frequency_not_int_or_range"),
+        (CONF_CHANGE_FREQUENCY, "[0, 1e400]", "change_frequency_not_int_or_range"),
+    ],
+)
+def test_normalize_scene_input_rejects_huge_numbers(key: str, value: object, error: str) -> None:
+    """Report numbers too large for float conversion as the field's error."""
+    data = _base_input()
+    data[key] = value
+
+    with pytest.raises(vol.Invalid, match=error):
+        normalize_scene_input(data)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        (CONF_BRIGHTNESS, 10**400),
+        (CONF_CHANGE_AMOUNT, 10**400),
+        (CONF_CHANGE_AMOUNT, [1, 10**400]),
+        (CONF_TRANSITION, 10**400),
+        (CONF_CHANGE_FREQUENCY, 10**400),
+        (CONF_CHANGE_FREQUENCY, [0, 10**400]),
+    ],
+)
+def test_validate_start_service_data_rejects_huge_numbers(key: str, value: object) -> None:
+    """Reject numbers too large for float conversion as invalid service data."""
+    data = normalize_scene_input(_base_input())
+    data[key] = value
+
+    with pytest.raises(vol.Invalid):
+        validate_start_service_data(data)
+
+
+@pytest.mark.parametrize(
+    ("color_type", "color"),
+    [
+        ("rgb_color", [10**400, 0, 0]),
+        ("rgb_color", [float("inf"), 0, 0]),
+        ("rgbw_color", [0, 0, 0, float("inf")]),
+        ("xy_color", [10**400, 0]),
+        ("hs_color", [10**400, 0]),
+        ("color_temp", 10**20),
+        ("color_temp_kelvin", 10**20),
+        ("color_temp_kelvin", 10**400),
+    ],
+)
+def test_color_schema_rejects_huge_color_values(color_type: str, color: object) -> None:
+    """Reject color values that overflow conversion or cannot be stored."""
+    data = normalize_scene_input(_base_input())
+    data[CONF_COLORS] = [{"color_type": color_type, "color": color}]
+
+    with pytest.raises(vol.Invalid):
+        validate_start_service_data(data)

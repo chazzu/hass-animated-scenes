@@ -73,6 +73,12 @@ CHANGE_AMOUNT_MIN = 0
 CHANGE_AMOUNT_MAX = 65535
 BRIGHTNESS_MIN = 0
 BRIGHTNESS_MAX = 255
+# Priorities are persisted in config entries, which cannot store integers
+# beyond 64 bits, so keep them inside a generous but storable range.
+PRIORITY_MIN = -1_000_000_000
+PRIORITY_MAX = 1_000_000_000
+# Upper bound for mired and kelvin color temperatures in YAML colors.
+COLOR_TEMPERATURE_MAX = 1_000_000
 
 ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL = "change_amount_not_int_or_all"
 ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE = "change_frequency_not_int_or_range"
@@ -86,6 +92,8 @@ ERROR_SCENE_NAME_BLANK = "scene_name_blank"
 ERROR_SCENE_NAME_EXISTS = "scene_name_exists"
 ABORT_ACTIVITY_SENSOR_NO_OPTIONS = "activity_sensor_no_options"
 ABORT_ACTIVITY_SENSOR_EXISTS = "activity_sensor_exists"
+ABORT_IMPORT_INVALID = "import_invalid"
+ABORT_IMPORT_SCENE_NAME_EXISTS = "scene_name_exists"
 
 EVENT_NAME_CHANGE = "animated_scenes_change"
 EVENT_STATE_STARTED = "started"

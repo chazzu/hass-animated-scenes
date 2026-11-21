@@ -10,11 +10,15 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
 
-def register_light_services(hass: HomeAssistant) -> list[dict[str, Any]]:
+def register_light_services(
+    hass: HomeAssistant, turn_off_calls: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     """Register light services that enforce Home Assistant's real turn-on schema.
 
     Args:
         hass: Home Assistant test instance.
+        turn_off_calls: Optional list that records each accepted
+            ``light.turn_off`` payload.
 
     Returns:
         A list that records each accepted ``light.turn_on`` payload.
@@ -34,8 +38,18 @@ def register_light_services(hass: HomeAssistant) -> list[dict[str, Any]]:
                 context=call.context,
             )
 
-    async def _turn_off(_: ServiceCall) -> None:
-        """Accept a turn-off call."""
+    async def _turn_off(call: ServiceCall) -> None:
+        """Record a turn-off call and mark its lights as off."""
+        if turn_off_calls is not None:
+            turn_off_calls.append(dict(call.data))
+        for entity_id in call.data["entity_id"]:
+            state = hass.states.get(entity_id)
+            hass.states.async_set(
+                entity_id,
+                "off",
+                dict(state.attributes) if state else {},
+                context=call.context,
+            )
 
     hass.services.async_register(
         "light",

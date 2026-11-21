@@ -161,3 +161,32 @@ async def test_start_service_accepts_text_change_amount_range(hass: HomeAssistan
 
     assert "Spooky" in manager.animations
     await hass.services.async_call(DOMAIN, "stop_animation", {CONF_NAME: "Spooky"}, blocking=True)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("priority", 10**20),
+        ("priority", 10**400),
+        ("brightness", 10**400),
+        ("change_amount", 10**400),
+        ("transition", 10**400),
+        ("change_frequency", [0, 10**400]),
+    ],
+)
+async def test_start_service_rejects_huge_numbers(
+    hass: HomeAssistant, field: str, value: object
+) -> None:
+    """Reject numbers that cannot be converted or stored as invalid service data."""
+    await async_setup(hass, {})
+
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "start_animation",
+            {CONF_NAME: "Spooky", CONF_LIGHTS: ["light.one"], "colors": COLORS, field: value},
+            blocking=True,
+        )
+    manager = Animations.instance
+    assert manager is not None
+    assert manager.animations == {}

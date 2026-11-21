@@ -11,7 +11,7 @@ start_animation:
         text:
     priority:
       name: Priority
-      description: Sets a priority for this animation. If multiple animations use the same light, the one with the higher priority will "win" and take control of the light.
+      description: Sets a priority for this animation. If multiple animations use the same light, the one with the higher priority will "win" and take control of the light. Any whole number from -1,000,000,000 to 1,000,000,000.
       required: False
       example: 100
       default: 100
@@ -32,7 +32,7 @@ start_animation:
           step: 1
     transition:
       name: Transition
-      description: How long a light should take to transition from it's former state to it's new state.
+      description: How long a light should take to transition from its former state to its new state.
       example: 1
       required: False
       default: 1

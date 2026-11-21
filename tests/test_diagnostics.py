@@ -18,7 +18,12 @@ async def test_diagnostics_redacts_entity_ids_and_reports_runtime(
     """Return redacted config data with a summary of runtime manager state."""
     manager = Animations(hass)
     Animations.instance = manager
-    manager.light_owner["light.kitchen"] = object()  # type: ignore[assignment]
+    # Distinct sizes so a swapped or mislabeled counter is detected.
+    manager.animations["Spooky"] = object()  # type: ignore[assignment]
+    for light in ("light.kitchen", "light.hall"):
+        manager.light_owner[light] = object()  # type: ignore[assignment]
+    for light in ("light.kitchen", "light.hall", "light.porch"):
+        manager.states[light] = object()
     entry = _diagnostic_entry()
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
@@ -28,7 +33,13 @@ async def test_diagnostics_redacts_entity_ids_and_reports_runtime(
     assert diagnostics["entry"]["data"]["lights"] == "**REDACTED**"
     assert diagnostics["entry"]["data"]["target"]["entity_id"] == "**REDACTED**"
     assert diagnostics["entry"]["data"]["selector"]["animated_scene_switch"] == "**REDACTED**"
-    assert diagnostics["runtime"]["active_light_count"] == 1
+    assert diagnostics["runtime"] == {
+        "active_animation_count": 1,
+        "active_light_count": 2,
+        "stored_state_count": 3,
+    }
+    # The placeholders cannot be stopped when Home Assistant shuts down.
+    manager.animations.clear()
 
 
 @pytest.mark.asyncio
