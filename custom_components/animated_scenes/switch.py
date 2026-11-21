@@ -289,6 +289,11 @@ class AnimatedSceneSwitch(SwitchEntity):
         """Turn the switch on and start the corresponding animation.
 
         If the switch is already on this is a no-op.
+
+        Raises:
+            IntegrationError: If the stored scene config cannot start; the error
+                propagates from the manager's start call and the switch stays off.
+
         """
         if not self._attr_is_on:
             manager = Animations.instance

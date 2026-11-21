@@ -12,7 +12,6 @@ import pytest
 
 import custom_components
 from custom_components.animated_scenes.animations import Animations
-from custom_components.animated_scenes.const import DOMAIN
 
 pytest_plugins = ("pytest_homeassistant_custom_component",)
 
@@ -49,17 +48,6 @@ def restore_animations_instance() -> Iterator[None]:
         yield
     finally:
         Animations.instance = previous_instance
-
-
-@pytest.fixture
-def integration_domain() -> str:
-    """Return the Animated Scenes integration domain.
-
-    Returns:
-        str: The integration domain used by Home Assistant tests.
-
-    """
-    return DOMAIN
 
 
 def _load_script_module(module_name: str, script_path: Path) -> Iterator[ModuleType]:

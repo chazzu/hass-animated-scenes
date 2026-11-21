@@ -1083,3 +1083,24 @@ async def test_options_scene_form_fields_have_labels(hass: HomeAssistant) -> Non
     assert data_schema is not None
     fields = {str(marker) for marker in data_schema.schema}
     assert fields <= set(labels)
+
+
+async def test_options_rename_stores_trimmed_name(hass: HomeAssistant) -> None:
+    """Store a padded rename without its surrounding spaces."""
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    entry = await _setup_real_scene_entry(hass)
+
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {CONF_NAME: "  New  ", CONF_LIGHTS: ["light.one"]}
+    )
+    result = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] == "create_entry"
+    assert entry.data[CONF_NAME] == "New"
+    assert entry.title == "New"
+    await hass.config_entries.async_unload(entry.entry_id)

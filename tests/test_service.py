@@ -9,7 +9,14 @@ import voluptuous as vol
 
 from custom_components.animated_scenes import async_setup
 from custom_components.animated_scenes.animations import Animations
-from custom_components.animated_scenes.const import CONF_LIGHTS, DOMAIN
+from custom_components.animated_scenes.const import (
+    CONF_LIGHTS,
+    DOMAIN,
+    EVENT_NAME_CHANGE,
+    EVENT_STATE_STARTED,
+    EVENT_STATE_STOPPED,
+    EVENT_STATE_UPDATED,
+)
 
 from .helpers import animation_tasks, register_light_services
 
@@ -190,3 +197,74 @@ async def test_start_service_rejects_huge_numbers(
     manager = Animations.instance
     assert manager is not None
     assert manager.animations == {}
+
+
+def _capture_scene_events(hass: HomeAssistant) -> list[tuple[str, str]]:
+    """Record ``(animation, state)`` for every Animated Scenes change event.
+
+    Args:
+        hass: Home Assistant test instance.
+
+    Returns:
+        A list that grows with each fired ``animated_scenes_change`` event.
+
+    """
+    events: list[tuple[str, str]] = []
+    hass.bus.async_listen(
+        EVENT_NAME_CHANGE,
+        lambda event: events.append((event.data["animation"], event.data["state"])),
+    )
+    return events
+
+
+async def _start_scene(hass: HomeAssistant, frequency: int) -> None:
+    """Start the ``Spooky`` scene through the public service."""
+    await hass.services.async_call(
+        DOMAIN,
+        "start_animation",
+        {
+            CONF_NAME: "Spooky",
+            CONF_LIGHTS: ["light.one"],
+            "colors": COLORS,
+            "change_frequency": frequency,
+        },
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize(
+    ("next_frequency", "expected"),
+    [(0, [("Spooky", EVENT_STATE_STOPPED)]), (60, [("Spooky", EVENT_STATE_STARTED)])],
+    ids=["one_shot", "repeating"],
+)
+async def test_restart_fires_single_event(
+    hass: HomeAssistant, next_frequency: int, expected: list[tuple[str, str]]
+) -> None:
+    """Restart into a one-shot fires only stopped; into a repeating scene only started."""
+    await async_setup(hass, {})
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", ORIGINAL)
+    await _start_scene(hass, 60)
+    events = _capture_scene_events(hass)
+
+    await _start_scene(hass, next_frequency)
+
+    assert events == expected
+    await hass.services.async_call(DOMAIN, "stop_animation", {CONF_NAME: "Spooky"}, blocking=True)
+
+
+async def test_removing_last_light_fires_stopped_then_updated(hass: HomeAssistant) -> None:
+    """Emit stopped followed by updated when the last light leaves a running scene."""
+    await async_setup(hass, {})
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", ORIGINAL)
+    await _start_scene(hass, 60)
+    events = _capture_scene_events(hass)
+
+    await hass.services.async_call(
+        DOMAIN, "remove_lights", {CONF_LIGHTS: ["light.one"]}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert events == [("Spooky", EVENT_STATE_STOPPED), ("Spooky", EVENT_STATE_UPDATED)]

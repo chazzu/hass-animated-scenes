@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from homeassistant.const import CONF_BRIGHTNESS, CONF_LIGHTS, CONF_NAME
+from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 import voluptuous as vol
 
 from custom_components.animated_scenes import scene_config
@@ -23,6 +25,8 @@ from custom_components.animated_scenes.const import (
     DEFAULT_PRIORITY,
     DEFAULT_RESTORE,
     DEFAULT_RESTORE_POWER,
+    DOMAIN,
+    ENTITY_SCENE,
     PRIORITY_MAX,
     PRIORITY_MIN,
 )
@@ -31,6 +35,7 @@ from custom_components.animated_scenes.scene_config import (
     build_colors_from_rgb_dict,
     clean_color_rgb_dict,
     normalize_scene_input,
+    scene_name_exists,
     validate_start_service_data,
 )
 
@@ -811,3 +816,20 @@ def test_color_schema_rejects_huge_color_values(color_type: str, color: object) 
 
     with pytest.raises(vol.Invalid):
         validate_start_service_data(data)
+
+
+@pytest.mark.parametrize(
+    ("stored", "candidate"),
+    [("  Spooky ", "Spooky"), ("Spooky", " Spooky  ")],
+    ids=["padded_stored", "padded_candidate"],
+)
+def test_scene_name_exists_ignores_surrounding_whitespace(
+    hass: HomeAssistant, stored: str, candidate: str
+) -> None:
+    """Match scene names regardless of padding on either side."""
+    MockConfigEntry(
+        domain=DOMAIN, data={CONF_ENTITY_TYPE: ENTITY_SCENE, CONF_NAME: stored}
+    ).add_to_hass(hass)
+
+    assert scene_name_exists(hass, candidate)
+    assert not scene_name_exists(hass, "Other")
