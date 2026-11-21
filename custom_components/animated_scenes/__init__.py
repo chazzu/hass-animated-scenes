@@ -139,6 +139,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     if unload_ok and manager and entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE) == ENTITY_SCENE:
         name = entry.data.get("name")
-        if name:
+        if name is not None:
             await manager.stop_by_name(name)
     return unload_ok

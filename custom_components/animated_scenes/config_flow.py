@@ -71,6 +71,7 @@ from .const import (
     ERROR_BRIGHTNESS_NOT_INT_OR_RANGE,
     ERROR_COLORS_IS_BLANK,
     ERROR_COLORS_MALFORMED,
+    ERROR_SCENE_NAME_BLANK,
     ERROR_SCENE_NAME_EXISTS,
 )
 from .scene_config import (
@@ -491,7 +492,9 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._data.update(user_input)
             self._data.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
-            if _scene_name_exists(self.hass, self._data[CONF_NAME]):
+            if not str(self._data[CONF_NAME]).strip():
+                errors["base"] = ERROR_SCENE_NAME_BLANK
+            elif _scene_name_exists(self.hass, self._data[CONF_NAME]):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS
             else:
                 try:
@@ -559,21 +562,24 @@ class AnimatedScenesConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = error
             if not errors:
                 color_uuid = uuid.random_uuid_hex()
-                self._data.setdefault(CONF_COLOR_RGB_DICT, {}).update({color_uuid: user_input})
+                color_rgb_dict = {
+                    **self._data.get(CONF_COLOR_RGB_DICT, {}),
+                    color_uuid: user_input,
+                }
                 if user_input.get(CONF_COLOR_ADD_COLOR, False):
+                    self._data[CONF_COLOR_RGB_DICT] = color_rgb_dict
                     return await self.async_step_color_rgb_ui()
-                self._data.update(
-                    {
-                        CONF_COLOR_RGB_DICT: clean_color_rgb_dict(
-                            self._data.get(CONF_COLOR_RGB_DICT, {})
-                        )
-                    }
-                )
-                if error := _validate_rgb_ui_runtime_data(self._data):
+                # Commit only after validation so a rejected color is not kept on retry.
+                candidate_data = {
+                    **self._data,
+                    CONF_COLOR_RGB_DICT: clean_color_rgb_dict(color_rgb_dict),
+                }
+                if error := _validate_rgb_ui_runtime_data(candidate_data):
                     errors["base"] = error
                 elif _scene_name_exists(self.hass, self._data[CONF_NAME]):
                     errors["base"] = ERROR_SCENE_NAME_EXISTS
                 else:
+                    self._data = candidate_data
                     return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
 
         return self.async_show_form(
@@ -648,7 +654,9 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
         if user_input is not None:
             self._data.update(user_input)
             self._data.update({CONF_ENTITY_TYPE: ENTITY_SCENE})
-            if _scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
+            if not str(self._data[CONF_NAME]).strip():
+                errors["base"] = ERROR_SCENE_NAME_BLANK
+            elif _scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
                 errors["base"] = ERROR_SCENE_NAME_EXISTS
             else:
                 try:
@@ -731,52 +739,45 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             if error := _normalize_rgb_ui_color_input(color_data):
                 errors["base"] = error
             if not errors:
-                if self._rgb_ui_color_index + 1 <= self._rgb_ui_color_max:
-                    self._data.setdefault(CONF_COLOR_RGB_DICT, {}).update(
-                        {self._rgb_ui_color_keys[self._rgb_ui_color_index]: color_data}
-                    )
-                else:
-                    color_uuid = uuid.random_uuid_hex()
-                    self._data.setdefault(CONF_COLOR_RGB_DICT, {}).update({color_uuid: color_data})
+                color_key = (
+                    self._rgb_ui_color_keys[self._rgb_ui_color_index]
+                    if self._rgb_ui_color_index + 1 <= self._rgb_ui_color_max
+                    else uuid.random_uuid_hex()
+                )
+                color_rgb_dict = {
+                    **self._data.get(CONF_COLOR_RGB_DICT, {}),
+                    color_key: color_data,
+                }
                 if self._rgb_ui_color_index + 1 < self._rgb_ui_color_max or (
                     self._rgb_ui_color_index + 1 >= self._rgb_ui_color_max
                     and color_data.get(CONF_COLOR_ADD_COLOR, False)
                 ):
+                    self._data[CONF_COLOR_RGB_DICT] = color_rgb_dict
                     self._rgb_ui_color_index += 1
                     return await self.async_step_color_rgb_ui()
-                self._data.update({CONF_COLORS: {}})
-                cleaned_color_rgb_dict = clean_color_rgb_dict(
-                    self._data.get(CONF_COLOR_RGB_DICT, {})
-                )
-                if not cleaned_color_rgb_dict:
+                # Commit only after validation so a rejected color is not kept on retry.
+                candidate_data = {
+                    **self._data,
+                    CONF_COLORS: {},
+                    CONF_COLOR_RGB_DICT: clean_color_rgb_dict(color_rgb_dict),
+                }
+                if not candidate_data[CONF_COLOR_RGB_DICT]:
                     errors["base"] = ERROR_COLORS_IS_BLANK
-                else:
-                    self._data.update({CONF_COLOR_RGB_DICT: cleaned_color_rgb_dict})
-                    if error := _validate_rgb_ui_runtime_data(self._data):
-                        errors["base"] = error
-                    elif _scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
-                        errors["base"] = ERROR_SCENE_NAME_EXISTS
-                if errors:
-                    return self.async_show_form(
-                        step_id="color_rgb_ui",
-                        data_schema=_build_color_rgb_ui_schema(
-                            user_input,
-                            color_data,
-                            options_flow=True,
-                            is_last_color=True,
-                        ),
-                        errors=errors,
-                        description_placeholders={"scene_name": self._data[CONF_NAME]},
+                elif error := _validate_rgb_ui_runtime_data(candidate_data):
+                    errors["base"] = error
+                elif _scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
+                    errors["base"] = ERROR_SCENE_NAME_EXISTS
+                if not errors:
+                    self._data = candidate_data
+                    await self._async_stop_previous_animation_if_renamed()
+                    self.hass.config_entries.async_update_entry(
+                        self.config,
+                        data=self._data,
+                        options=self.config.options,
+                        title=self._data[CONF_NAME],
                     )
-                await self._async_stop_previous_animation_if_renamed()
-                self.hass.config_entries.async_update_entry(
-                    self.config,
-                    data=self._data,
-                    options=self.config.options,
-                    title=self._data[CONF_NAME],
-                )
-                await self.hass.config_entries.async_reload(self.config.entry_id)
-                return self.async_create_entry(title="", data={})
+                    await self.hass.config_entries.async_reload(self.config.entry_id)
+                    return self.async_create_entry(title="", data={})
 
         return self.async_show_form(
             step_id="color_rgb_ui",

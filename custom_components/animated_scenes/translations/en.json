@@ -88,6 +88,7 @@
             "colors_is_blank": "Colors: Cannot be blank or empty",
             "colors_malformed": "Colors: Invalid format",
             "must_select_lights": "You must select at least one light for the animation",
+            "scene_name_blank": "Scene name cannot be blank",
             "scene_name_exists": "An animated scene with this name already exists"
         },
         "abort": {
@@ -169,6 +170,7 @@
             "colors_is_blank": "Colors: Cannot be blank or empty",
             "colors_malformed": "Colors: Invalid format",
             "must_select_lights": "You must select at least one light for the animation",
+            "scene_name_blank": "Scene name cannot be blank",
             "scene_name_exists": "An animated scene with this name already exists"
         },
         "abort": {

@@ -25,6 +25,7 @@ from homeassistant.components.light import (
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
+    ATTR_WHITE,
     ATTR_XY_COLOR,
     DOMAIN as LIGHT_DOMAIN,
     ColorMode,
@@ -33,10 +34,11 @@ from homeassistant.const import (
     CONF_BRIGHTNESS,
     CONF_LIGHTS,
     CONF_NAME,
+    EVENT_HOMEASSISTANT_STOP,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
 )
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError, IntegrationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
@@ -95,6 +97,15 @@ type LightAttributes = dict[str, Any]
 type NumberRange = list[int] | list[float]
 type NumberConfig = int | float | NumberRange
 
+RESTORE_COLOR_ATTRIBUTES: dict[ColorMode, str] = {
+    ColorMode.COLOR_TEMP: ATTR_COLOR_TEMP_KELVIN,
+    ColorMode.HS: ATTR_HS_COLOR,
+    ColorMode.RGB: ATTR_RGB_COLOR,
+    ColorMode.RGBW: ATTR_RGBW_COLOR,
+    ColorMode.RGBWW: ATTR_RGBWW_COLOR,
+    ColorMode.XY: ATTR_XY_COLOR,
+}
+
 
 def _convert_mireds_to_kelvin(mireds: int) -> int:
     """Convert mireds to kelvin, ensuring the result is within valid bounds."""
@@ -112,9 +123,9 @@ async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) 
     """Call a Home Assistant service safely, logging exceptions.
 
     This wrapper calls the given service on the Home Assistant instance
-    and logs a warning for Home Assistant service errors. It intentionally
-    suppresses those service-call failures to avoid stopping animations when
-    one light update fails.
+    and logs a warning for Home Assistant service and schema errors. It
+    intentionally suppresses those service-call failures to avoid stopping
+    animations or cleanup when one light update fails.
 
     Args:
         hass: Home Assistant instance.
@@ -128,7 +139,7 @@ async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) 
     """
     try:
         await hass.services.async_call(domain, service, attr)
-    except HomeAssistantError as e:
+    except (HomeAssistantError, vol.Invalid) as e:
         _LOGGER.warning("Received an error calling service. %s: %s", type(e).__name__, e)
 
 
@@ -201,6 +212,7 @@ class Animation:
         self._priority: int = config[CONF_PRIORITY]
         self._restore: bool = config[CONF_RESTORE]
         self._restore_power: bool = config[CONF_RESTORE_POWER]
+        self._restart_lights: set[str] = set()
         self._sequence: bool = config[CONF_CHANGE_SEQUENCE]
         self._task: Task | None = None
         self._transition: NumberConfig = config[CONF_TRANSITION]
@@ -696,15 +708,31 @@ class Animation:
         Restores any stored states as necessary and notifies Home
         Assistant that the animation stopped.
         """
-        for light in self._active_lights:
+        try:
+            for light in list(self._active_lights):
+                if Animations.instance:
+                    await Animations.instance.release_light(
+                        self, light, skip_restore=light in self._restart_lights
+                    )
+        finally:
             if Animations.instance:
-                await Animations.instance.release_light(self, light)
-        if Animations.instance:
-            Animations.instance.release_animation(self)
-        self._hass.bus.fire(
-            EVENT_NAME_CHANGE,
-            {"animation": self._name, "state": EVENT_STATE_STOPPED},
-        )
+                Animations.instance.release_animation(self)
+            self._hass.bus.fire(
+                EVENT_NAME_CHANGE,
+                {"animation": self._name, "state": EVENT_STATE_STOPPED},
+            )
+
+    def keep_states_for_restart(self, lights: set[str]) -> None:
+        """Skip restoring lights whose saved state carries into a restart.
+
+        Args:
+            lights: Entity ids that the replacement animation will keep using.
+
+        Returns:
+            None
+
+        """
+        self._restart_lights = lights
 
     def remove_light(self, light: str) -> None:
         """Remove a light from this animation's configured and active lists."""
@@ -769,7 +797,12 @@ class Animation:
             await self.release()
             return
         if not self._task:
-            self._task = asyncio.get_event_loop().create_task(self.animate())
+            # The loop reads self._task, so it must not start before assignment.
+            self._task = self._hass.async_create_background_task(
+                self.animate(),
+                name=f"animated_scenes_{self._name}",
+                eager_start=False,
+            )
             self._hass.bus.fire(
                 EVENT_NAME_CHANGE,
                 {"animation": self._name, "state": EVENT_STATE_STARTED},
@@ -783,6 +816,10 @@ class Animation:
                 await self._task
             except asyncio.CancelledError:
                 _LOGGER.info("Animation '%s' has been cancelled", self._name)
+            # A task cancelled before its first step never runs animate()'s cleanup.
+            manager = Animations.instance
+            if manager and manager.animations.get(self._name) is self:
+                await self.release()
 
 
 class Animations:
@@ -805,6 +842,21 @@ class Animations:
         self._conflicted_lights: dict[str, Any] = {}
         self._mutation_lock = asyncio.Lock()
         self.hass: HomeAssistant = hass
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._async_handle_hass_stop)
+
+    async def _async_handle_hass_stop(self, _: Event) -> None:
+        """Stop every running animation when Home Assistant shuts down.
+
+        Args:
+            _: The Home Assistant stop event (unused).
+
+        Returns:
+            None
+
+        """
+        async with self._mutation_lock:
+            for name in list(self.animations):
+                await self._stop_by_name_unlocked(name)
 
     def build_attributes_from_state(self, state: State) -> LightAttributes:
         """Build a service data mapping to restore a previously stored state.
@@ -819,24 +871,19 @@ class Animations:
         """
         attributes: LightAttributes = {
             "entity_id": state.entity_id,
-            "brightness": state.attributes.get("brightness"),
             "transition": 1,
         }
+        brightness = state.attributes.get("brightness")
+        if brightness is not None:
+            attributes["brightness"] = brightness
         if ATTR_COLOR_MODE in state.attributes:
-            if state.attributes[ATTR_COLOR_MODE] == ColorMode.XY:
-                attributes[ATTR_XY_COLOR] = state.attributes.get(ATTR_XY_COLOR)
-            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.COLOR_TEMP:
-                attributes[ATTR_COLOR_TEMP] = state.attributes.get(ATTR_COLOR_TEMP)
-            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.HS:
-                attributes[ATTR_HS_COLOR] = state.attributes.get(ATTR_HS_COLOR)
-            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.RGB:
-                attributes[ATTR_RGB_COLOR] = state.attributes.get(ATTR_RGB_COLOR)
-            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.RGBW:
-                attributes[ATTR_RGBW_COLOR] = state.attributes.get(ATTR_RGBW_COLOR)
-            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.RGBWW:
-                attributes[ATTR_RGBWW_COLOR] = state.attributes.get(ATTR_RGBWW_COLOR)
-            elif state.attributes[ATTR_COLOR_MODE] == ColorMode.WHITE:
-                attributes[ATTR_COLOR_MODE] = ColorMode.WHITE
+            color_mode = state.attributes[ATTR_COLOR_MODE]
+            if color_mode == ColorMode.WHITE:
+                attributes[ATTR_WHITE] = attributes.pop("brightness", True)
+            elif (color_attribute := RESTORE_COLOR_ATTRIBUTES.get(color_mode)) is not None:
+                color_value = state.attributes.get(color_attribute)
+                if color_value is not None:
+                    attributes[color_attribute] = color_value
         else:
             exclusive_properties: list = [
                 ATTR_RGB_COLOR,
@@ -844,7 +891,6 @@ class Animations:
                 ATTR_RGBWW_COLOR,
                 ATTR_XY_COLOR,
                 ATTR_HS_COLOR,
-                ATTR_COLOR_TEMP,
                 ATTR_COLOR_TEMP_KELVIN,
             ]
             for attr in exclusive_properties:
@@ -854,20 +900,18 @@ class Animations:
                     break
         return attributes
 
-    def external_light_change(self, event: Event[EventStateChangedData]) -> Any:
-        """Sync wrapper that schedules the async external change handler.
+    @callback
+    def external_light_change(self, event: Event[EventStateChangedData]) -> None:
+        """Schedule the async external change handler from the event loop.
 
-        The state change tracker expects a synchronous callable. Schedule
-        the actual async handler as a task so it can run in the event loop.
+        Args:
+            event: State change event for a tracked light.
+
+        Returns:
+            None
+
         """
-        # Schedule the async handler and return immediately
-        try:
-            asyncio.run_coroutine_threadsafe(
-                self._handle_external_light_change(event), self.hass.loop
-            )
-        except RuntimeError:
-            # Fall back to calling async_create_task if we're already in the loop.
-            self.hass.async_create_task(self._handle_external_light_change(event))
+        self.hass.async_create_task(self._handle_external_light_change(event))
 
     async def _handle_external_light_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle external state changes for tracked lights (async).
@@ -931,12 +975,32 @@ class Animations:
         """Start an animation while the caller holds the mutation lock."""
         config = self.validate_start(data)
         id_name: str = data[CONF_NAME]
+        preserved_states: dict[str, State] = {}
         if id_name in self.animations:
             _LOGGER.info("Animation '%s' was already running, so stopping it", id_name)
-            await self.animations[id_name].stop()
+            previous = self.animations[id_name]
+            next_lights = set(config[CONF_LIGHTS])
+            preserved_states = {
+                light: self.states[light]
+                for light in previous.get_active_lights()
+                if light in next_lights and light in self.states
+            }
+            previous.keep_states_for_restart(set(preserved_states))
+            await previous.stop()
+            self.states.update(preserved_states)
         _LOGGER.info("Starting animation '%s'", id_name)
         animation = Animation(self.hass, config)
-        for light in animation.get_active_lights():
+        active_lights = animation.get_active_lights()
+        unused_states = [
+            light
+            for light in preserved_states
+            if light not in active_lights and light not in self._light_animations
+        ]
+        for light in unused_states:
+            self.states.pop(light, None)
+        if unused_states:
+            self.refresh_listener()
+        for light in active_lights:
             self._track_animation_light(animation, light)
         self.animations[id_name] = animation
         startup_complete = False
@@ -1051,7 +1115,7 @@ class Animations:
                     animation.name,
                     light_owner.name,
                 )
-                await light_owner.update_light(entity_id)
+                await light_owner.update_light(entity_id, initial=True)
                 return
         if animation.restore and not skip_restore and entity_id in self.states:
             previous_state = self.states[entity_id]

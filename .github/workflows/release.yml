@@ -62,6 +62,19 @@ jobs:
           fi
           printf 'is_branch=false\n' >> "$GITHUB_OUTPUT"
 
+      - name: Create Zip
+        run: |
+          cd "$GITHUB_WORKSPACE/release-payload/custom_components/animated_scenes"
+          # Build outside the payload so the version commit cannot include the zip.
+          zip "$GITHUB_WORKSPACE/animated_scenes.zip" -r ./
+
+      - name: Upload Zip to Release
+        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ./animated_scenes.zip
+          tag_name: ${{ github.event.release.tag_name }}
+
       - name: Commit & Push Version Changes
         if: ${{ github.event_name == 'release' && github.event.action == 'published' && github.event.release.draft == false && github.event.release.prerelease == false && steps.release-target.outputs.is_branch == 'true' }}
         uses: stefanzweifel/git-auto-commit-action@v7
@@ -79,22 +92,10 @@ jobs:
           git tag -f "$TAG_NAME"
           git push -f origin "$TAG_NAME"
 
-      - name: Create Zip
-        run: |
-          cd ${{ github.workspace }}/release-payload/custom_components/animated_scenes
-          zip animated_scenes.zip -r ./
-
-      - name: Upload Zip to Release
-        if: ${{ github.event_name == 'release' && github.event.release.draft == false }}
-        uses: softprops/action-gh-release@v3
-        with:
-          files: ./release-payload/custom_components/animated_scenes/animated_scenes.zip
-          tag_name: ${{ github.event.release.tag_name }}
-
       - name: Add Zip to Action
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@v7
         with:
           name: animated_scenes
-          path: ./release-payload/custom_components/animated_scenes/animated_scenes.zip
+          path: ./animated_scenes.zip
           if-no-files-found: error

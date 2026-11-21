@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Modernized the runtime, validation, diagnostics, tests, and release tooling. Requires Home Assistant 2026.3+ and migrates config entries one way to version 2. `start_animation` omitted-field defaults now match its documentation (`priority: 0`, `restore_power: false`, `change_amount: all`), repeating frequency ranges must be at least 0.1 seconds, and stopping or restarting scenes now restores the original light state reliably.
+
 ## 2.1.1
 
 ### Fixed

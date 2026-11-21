@@ -39,6 +39,7 @@ from custom_components.animated_scenes.const import (
     ERROR_BRIGHTNESS_NOT_INT_OR_RANGE,
     ERROR_COLORS_IS_BLANK,
     ERROR_COLORS_MALFORMED,
+    ERROR_SCENE_NAME_BLANK,
     ERROR_SCENE_NAME_EXISTS,
 )
 from custom_components.animated_scenes.scene_config import (
@@ -280,6 +281,56 @@ async def test_new_rgb_ui_rejects_all_zero_color_weights(hass: HomeAssistant) ->
     assert result["type"] == "form"
     assert result["errors"] == {"base": ERROR_COLORS_MALFORMED}
     assert hass.config_entries.async_entries(DOMAIN) == []
+
+
+async def test_new_rgb_ui_retry_does_not_store_rejected_color(hass: HomeAssistant) -> None:
+    """Keep only the corrected color after a rejected final submission."""
+    flow = AnimatedScenesConfigFlow()
+    flow.hass = hass
+    await flow.async_step_scene(
+        {
+            CONF_NAME: "Retry",
+            CONF_LIGHTS: ["light.one"],
+            CONF_COLOR_SELECTOR_MODE: COLOR_SELECTOR_RGB_UI,
+        }
+    )
+    await flow.async_step_color_rgb_ui({CONF_COLOR: [255, 0, 0], CONF_COLOR_WEIGHT: 0})
+
+    result = await flow.async_step_color_rgb_ui({CONF_COLOR: [0, 255, 0], CONF_COLOR_WEIGHT: 10})
+
+    assert result["type"] == "create_entry"
+    stored = list(result["data"][CONF_COLOR_RGB_DICT].values())
+    assert [color[CONF_COLOR] for color in stored] == [[0, 255, 0]]
+
+
+async def test_options_rgb_ui_retry_does_not_store_rejected_color(hass: HomeAssistant) -> None:
+    """Keep only the corrected new color after an options validation error."""
+    flow, entry = _options_flow(hass, selector_mode=COLOR_SELECTOR_RGB_UI)
+    await flow.async_step_color_rgb_ui({CONF_COLOR: [255, 0, 0], CONF_COLOR_WEIGHT: 0})
+
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()):
+        result = await flow.async_step_color_rgb_ui(
+            {CONF_COLOR: [0, 255, 0], CONF_COLOR_WEIGHT: 10}
+        )
+
+    assert result["type"] == "create_entry"
+    stored = list(entry.data[CONF_COLOR_RGB_DICT].values())
+    assert [color[CONF_COLOR] for color in stored] == [[0, 255, 0]]
+
+
+@pytest.mark.parametrize("name", ["", "   "], ids=["empty", "whitespace"])
+async def test_scene_flows_reject_blank_names(hass: HomeAssistant, name: str) -> None:
+    """Reject blank names in both the create and options flows."""
+    create_flow = AnimatedScenesConfigFlow()
+    create_flow.hass = hass
+    options_flow, _ = _options_flow(hass)
+
+    results = [
+        await create_flow.async_step_scene(_scene_input(name)),
+        await options_flow.async_step_scene(_scene_input(name)),
+    ]
+
+    assert [result["errors"] for result in results] == [{"base": ERROR_SCENE_NAME_BLANK}] * 2
 
 
 async def test_options_rgb_ui_rejects_missing_color(hass: HomeAssistant) -> None:

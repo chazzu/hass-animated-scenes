@@ -20,7 +20,7 @@ def workflow_text() -> str:
     ("expected", "contract"),
     [
         ('cron: "0 2 * * *"', "scheduled execution"),
-        ("push:\n    branches:\n      - master", "default-branch push execution"),
+        ("push:\n    branches:\n      - main\n      - master", "default-branch push execution"),
         ("workflow_dispatch:", "manual execution"),
         ("contents: write", "repository content updates"),
         ("pull-requests: write", "pull request updates"),

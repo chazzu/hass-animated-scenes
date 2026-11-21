@@ -375,7 +375,7 @@ def test_validate_start_service_data_rejects_config_flow_metadata() -> None:
     data = normalize_scene_input(_base_input())
     data[CONF_ENTITY_TYPE] = "scene"
 
-    with pytest.raises(vol.Invalid, match="extra keys not allowed"):
+    with pytest.raises(vol.Invalid, match="entity_type"):
         validate_start_service_data(data)
 
 
@@ -528,3 +528,17 @@ def test_build_colors_from_rgb_dict_copies_only_color_records(
         "two": {"color": [4, 5, 6], "brightness": [100, 255], "weight": 5},
     }
     assert color_rgb_dict not in copied_objects
+
+
+@pytest.mark.parametrize("brightness", [[200, 100], "[200,100]"], ids=["list", "string"])
+def test_validate_start_service_data_sorts_color_brightness_range(brightness: object) -> None:
+    """Normalize reversed per-color brightness so runtime selection cannot fail."""
+    data = {
+        CONF_NAME: "Reversed",
+        CONF_LIGHTS: ["light.one"],
+        "colors": [{"color_type": "rgb_color", "color": [255, 0, 0], CONF_BRIGHTNESS: brightness}],
+    }
+
+    result = validate_start_service_data(data)
+
+    assert result["colors"][0][CONF_BRIGHTNESS] == [100, 200]

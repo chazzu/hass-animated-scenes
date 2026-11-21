@@ -305,7 +305,7 @@ Animated Scenes supports Home Assistant diagnostics downloads from the integrati
 
 ## Development
 
-- Use Python 3.14.
+- Use Python 3.14. The integration requires Home Assistant 2026.3 or newer.
 - Install local development dependencies with `./.venv/bin/python -m pip install --group dev -e .`.
 - Run tests with `./.venv/bin/pytest`.
 - Run linting and formatting checks with `./.venv/bin/prek run -a`.

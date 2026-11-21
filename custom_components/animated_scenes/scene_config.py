@@ -170,16 +170,20 @@ CHANGE_AMOUNT_VALUE_SCHEMA = vol.All(
 PRIORITY_VALUE_SCHEMA = _priority_to_int
 BRIGHTNESS_RANGE_SCHEMA = vol.Any(
     BRIGHTNESS_VALUE_SCHEMA,
-    vol.ExactSequence(
-        (
-            BRIGHTNESS_VALUE_SCHEMA,
-            BRIGHTNESS_VALUE_SCHEMA,
-        )
+    vol.All(
+        vol.ExactSequence(
+            (
+                BRIGHTNESS_VALUE_SCHEMA,
+                BRIGHTNESS_VALUE_SCHEMA,
+            )
+        ),
+        sorted,
     ),
     vol.All(
         vol.Match(INT_RANGE_PATTERN),
         _strlist_to_list,
         vol.ExactSequence((BRIGHTNESS_VALUE_SCHEMA, BRIGHTNESS_VALUE_SCHEMA)),
+        sorted,
     ),
 )
 TRANSITION_RANGE_SCHEMA = vol.Any(

@@ -8,12 +8,12 @@ from types import MappingProxyType, SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
-from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN
+from homeassistant.components.light import ATTR_COLOR_TEMP_KELVIN, LIGHT_TURN_ON_SCHEMA
 from homeassistant.config_entries import ConfigEntry, DiscoveryKey
-from homeassistant.const import CONF_NAME, Platform
+from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, IntegrationError
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -290,7 +290,7 @@ async def test_release_light_hands_owner_to_next_priority(hass: HomeAssistant) -
 
     assert manager.light_owner["light.one"] is low
     assert "light.one" in manager.states
-    update_light.assert_awaited_once_with("light.one")
+    update_light.assert_awaited_once_with("light.one", initial=True)
 
 
 @pytest.mark.asyncio
@@ -1095,3 +1095,178 @@ async def test_unload_entry_keeps_animation_when_platform_unload_fails(
 
     animation.stop.assert_not_awaited()
     assert entry.runtime_data["name"] == "Spooky"
+
+
+def _register_light_services(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Register light services that enforce Home Assistant's real turn-on schema.
+
+    Args:
+        hass: Home Assistant test instance.
+
+    Returns:
+        A list that records each accepted ``light.turn_on`` payload.
+
+    """
+    calls: list[dict[str, Any]] = []
+
+    async def _turn_on(call: ServiceCall) -> None:
+        """Record a valid turn-on call and mark its lights as on."""
+        calls.append(dict(call.data))
+        for entity_id in call.data["entity_id"]:
+            attributes = dict(hass.states.get(entity_id).attributes)  # type: ignore[union-attr]
+            hass.states.async_set(entity_id, "on", attributes)
+
+    async def _turn_off(_: ServiceCall) -> None:
+        """Accept a turn-off call."""
+
+    hass.services.async_register(
+        "light",
+        "turn_on",
+        _turn_on,
+        schema=cv.make_entity_service_schema(LIGHT_TURN_ON_SCHEMA),
+    )
+    hass.services.async_register(
+        "light", "turn_off", _turn_off, schema=cv.make_entity_service_schema({})
+    )
+    return calls
+
+
+def _repeating_config(name: str, lights: list[str], priority: int = 0) -> dict[str, Any]:
+    """Return a scene configuration whose loop stays idle during a test."""
+    return {**_animation_config(name, lights, priority), "change_frequency": 3600}
+
+
+@pytest.mark.parametrize(
+    ("attributes", "expected"),
+    [
+        (
+            {"color_mode": "color_temp", "brightness": 100, "color_temp_kelvin": 2700},
+            {"brightness": 100, "color_temp_kelvin": 2700},
+        ),
+        ({"color_mode": "onoff"}, {}),
+        ({"color_mode": "white", "brightness": 100}, {"white": 100}),
+    ],
+    ids=["color_temp", "onoff", "white"],
+)
+async def test_stop_restores_each_color_mode_and_allows_restart(
+    hass: HomeAssistant, attributes: dict[str, Any], expected: dict[str, Any]
+) -> None:
+    """Restore through the real light schema and leave the scene startable."""
+    manager = _runtime_manager(hass)
+    calls = _register_light_services(hass)
+    hass.states.async_set("light.one", "on", attributes)
+    await manager.start(_repeating_config("Spooky", ["light.one"]))
+    await asyncio.sleep(0)
+    calls.clear()
+
+    await manager.stop({CONF_NAME: "Spooky"})
+    await hass.async_block_till_done()
+
+    assert calls == [{"entity_id": ["light.one"], "transition": 1, **expected}]
+    assert "Spooky" not in manager.animations
+    assert manager.light_owner == {}
+    assert manager.states == {}
+
+    await manager.start(_repeating_config("Spooky", ["light.one"]))
+    assert "Spooky" in manager.animations
+    await manager.stop({CONF_NAME: "Spooky"})
+
+
+async def test_restart_keeps_original_state_for_final_restore(hass: HomeAssistant) -> None:
+    """Restore the pre-animation color after a same-name restart."""
+    manager = _runtime_manager(hass)
+    calls = _register_light_services(hass)
+    hass.states.async_set(
+        "light.one", "on", {"color_mode": "rgb", "brightness": 9, "rgb_color": (1, 2, 3)}
+    )
+    await manager.start(_repeating_config("Spooky", ["light.one"]))
+    await asyncio.sleep(0)
+    hass.states.async_set(
+        "light.one", "on", {"color_mode": "rgb", "brightness": 255, "rgb_color": (255, 0, 0)}
+    )
+
+    await manager.start(_repeating_config("Spooky", ["light.one"]))
+    await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    assert not [call for call in calls if call.get("rgb_color") == (1, 2, 3)]
+
+    calls.clear()
+    await manager.stop({CONF_NAME: "Spooky"})
+    await hass.async_block_till_done()
+
+    assert calls == [
+        {"entity_id": ["light.one"], "transition": 1, "brightness": 9, "rgb_color": (1, 2, 3)}
+    ]
+
+
+async def test_home_assistant_stop_ends_running_animations(hass: HomeAssistant) -> None:
+    """Stop animation loops and release lights when Home Assistant stops."""
+    manager = _runtime_manager(hass)
+    _register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    await manager.start(_repeating_config("Spooky", ["light.one"]))
+    await asyncio.sleep(0)
+    task = manager.animations["Spooky"]._task
+
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+
+    assert task is not None
+    assert task.done()
+    assert manager.animations == {}
+    assert manager.light_owner == {}
+
+
+async def test_stop_before_first_loop_step_releases_lights(hass: HomeAssistant) -> None:
+    """Release lights when a task is cancelled before its first step."""
+    manager = _runtime_manager(hass)
+    _register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    await manager.start(_repeating_config("Spooky", ["light.one"]))
+
+    await manager.stop({CONF_NAME: "Spooky"})
+
+    assert manager.animations == {}
+    assert manager.light_owner == {}
+    assert manager.states == {}
+
+
+async def test_priority_handoff_applies_static_color(hass: HomeAssistant) -> None:
+    """Apply the remaining animation's color when it does not animate color."""
+    manager = _runtime_manager(hass)
+    calls = _register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    low = {
+        **_repeating_config("Low", ["light.one"], priority=1),
+        "animate_color": False,
+        "colors": [{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    }
+    await manager.start(low)
+    await manager.start(_repeating_config("High", ["light.one"], priority=10))
+    await asyncio.sleep(0)
+    calls.clear()
+
+    await manager.stop({CONF_NAME: "High"})
+    await hass.async_block_till_done()
+
+    assert [call["rgb_color"] for call in calls] == [(0, 255, 0)]
+    await manager.stop({CONF_NAME: "Low"})
+
+
+async def test_external_turn_on_updates_light_from_event_loop(hass: HomeAssistant) -> None:
+    """Re-apply the animation when a tracked light is turned back on."""
+    manager = _runtime_manager(hass)
+    calls = _register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    await manager.start(_repeating_config("Spooky", ["light.one"]))
+    await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    hass.states.async_set("light.one", "off", {})
+    await hass.async_block_till_done()
+    calls.clear()
+
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (9, 9, 9)})
+    await hass.async_block_till_done()
+
+    assert [call["rgb_color"] for call in calls] == [(255, 0, 0)]
+    await manager.stop({CONF_NAME: "Spooky"})
