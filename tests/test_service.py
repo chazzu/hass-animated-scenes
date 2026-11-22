@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 import pytest
 import voluptuous as vol
 
@@ -210,15 +210,24 @@ def _capture_scene_events(hass: HomeAssistant) -> list[tuple[str, str]]:
 
     """
     events: list[tuple[str, str]] = []
-    hass.bus.async_listen(
-        EVENT_NAME_CHANGE,
-        lambda event: events.append((event.data["animation"], event.data["state"])),
-    )
+
+    @callback
+    def _record(event: Event) -> None:
+        """Record the animation name and state of one event."""
+        events.append((event.data["animation"], event.data["state"]))
+
+    hass.bus.async_listen(EVENT_NAME_CHANGE, _record)
     return events
 
 
 async def _start_scene(hass: HomeAssistant, frequency: int) -> None:
-    """Start the ``Spooky`` scene through the public service."""
+    """Start the ``Spooky`` scene through the public service.
+
+    Args:
+        hass: Home Assistant test instance.
+        frequency: The ``change_frequency`` value in seconds.
+
+    """
     await hass.services.async_call(
         DOMAIN,
         "start_animation",

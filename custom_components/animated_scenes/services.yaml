@@ -94,7 +94,7 @@ start_animation:
         boolean:
     animate_brightness:
       name: Animate Brightness
-      description: Whether or not to animate the brightness. If set to false, brightness will be set once upon startup.
+      description: Whether or not to animate the brightness. If set to false, the scene Brightness (a single number) is sent with every update instead of each color's brightness.
       default: True
       required: False
       selector:

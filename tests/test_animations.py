@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 from homeassistant.config_entries import ConfigEntry, DiscoveryKey
 from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import IntegrationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util.color import (
@@ -221,7 +221,7 @@ async def test_add_lights_updates_running_animation(hass: HomeAssistant) -> None
         hass.states.async_set(light, "on", LIGHT_ON)
     animation = await _start(manager, "Spooky", ["light.one"])
     events: list[Mapping[str, Any]] = []
-    hass.bus.async_listen(EVENT_NAME_CHANGE, lambda event: events.append(event.data))
+    hass.bus.async_listen(EVENT_NAME_CHANGE, callback(lambda event: events.append(event.data)))
 
     for _ in range(2):
         await manager.add_lights_to_animation({CONF_NAME: "Spooky", CONF_LIGHTS: ["light.two"]})
@@ -329,7 +329,7 @@ async def test_remove_final_light_honors_restore_and_stops_animation(
     await hass.async_block_till_done()
     calls.clear()
     events: list[Mapping[str, Any]] = []
-    hass.bus.async_listen(EVENT_NAME_CHANGE, lambda event: events.append(event.data))
+    hass.bus.async_listen(EVENT_NAME_CHANGE, callback(lambda event: events.append(event.data)))
 
     await manager.remove_lights({CONF_LIGHTS: ["light.one"], CONF_SKIP_RESTORE: skip_restore})
     await hass.async_block_till_done()
@@ -1425,6 +1425,7 @@ async def test_restart_keeps_switch_and_activity_sensor_on(hass: HomeAssistant) 
     await hass.async_block_till_done()
     observed: list[tuple[str, str]] = []
 
+    @callback
     def _record(event: Event) -> None:
         """Record switch and sensor state writes."""
         new_state = event.data["new_state"]
