@@ -94,7 +94,7 @@ start_animation:
         boolean:
     animate_brightness:
       name: Animate Brightness
-      description: Whether or not to animate the brightness. If set to false, the scene Brightness (a single number) is sent with every update instead of each color's brightness.
+      description: Whether or not to animate the brightness. If set to false, the scene Brightness (a single number) is sent with each color update instead of the color's own brightness. Colors with One Change per Tick still send their own brightness on brightness-only updates.
       default: True
       required: False
       selector:

@@ -44,7 +44,7 @@
                     "restore_power": "When the animation ends, turn any lights that were off back to off.",
                     "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
                     "brightness": "Brightness used when Animate Brightness is off. Use a single number from 0 to 255; a range such as '[125, 255]' is ignored in that mode. When Animate Brightness is on, each color uses its own brightness instead (255 unless the color sets one).",
-                    "animate_brightness": "Whether or not to animate the brightness. If false, the scene Brightness (a single number) is sent with every update instead of each color's brightness.",
+                    "animate_brightness": "Whether or not to animate the brightness. If false, the scene Brightness (a single number) is sent with each color update instead of the color's own brightness. Colors with One Change per Tick still send their own brightness on brightness-only updates.",
                     "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
                     "lights": "The lights to include in the animation."                },
                 "description": "Create a new animated scene"
@@ -129,7 +129,7 @@
                     "restore_power": "When the animation ends, turn any lights that were off back to off.",
                     "change_sequence": "If set to true, then color changes will happen in the order they are listed below. If false, colors will be chosen randomly from the list.",
                     "brightness": "Brightness used when Animate Brightness is off. Use a single number from 0 to 255; a range such as '[125, 255]' is ignored in that mode. When Animate Brightness is on, each color uses its own brightness instead (255 unless the color sets one).",
-                    "animate_brightness": "Whether or not to animate the brightness. If false, the scene Brightness (a single number) is sent with every update instead of each color's brightness.",
+                    "animate_brightness": "Whether or not to animate the brightness. If false, the scene Brightness (a single number) is sent with each color update instead of the color's own brightness. Colors with One Change per Tick still send their own brightness on brightness-only updates.",
                     "animate_color": "Whether or not to animate the colors. If false, colors will be set once upon startup.",
                     "lights": "The lights to include in the animation.",
                     "color_selector_mode": "IF YOU CHANGE THIS, YOU WILL NEED TO RESELECT ALL OF YOUR COLORS."
