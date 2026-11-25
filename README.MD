@@ -72,7 +72,7 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 
 Set `change_frequency: 0` to change the lights once and then stop. Normal restore settings still apply: with `restore: true`, the lights immediately return to their previous settings, and `restore_power` controls whether lights that were off turn back off. Set `restore: false` to keep the new colors.
 
-When a higher-priority scene stops, or a higher-priority one-shot scene (`change_frequency: 0`) finishes, the light is handed back to the lower-priority running scene, which requests its color immediately. The light service may take time to apply that request. If the light is off and the returning scene has `ignore_off: false`, it stays off until turned on.
+When a higher-priority scene stops, or a higher-priority one-shot scene (`change_frequency: 0`) finishes, the light is handed back to the lower-priority running scene, which requests its color immediately. For each light, Animated Scenes waits for the previous light service call to finish before applying a handoff or restore. While a call is pending, periodic updates for that light are skipped. If the light is off and the returning scene has `ignore_off: false`, it stays off until turned on.
 
 ## Color Configuration
 
@@ -239,7 +239,7 @@ data:
   skip_restore: true
 ```
 
-If `skip_restore` is true, the integration does not restore those lights to their pre-animation state.
+Removing a light discards scene color changes still waiting to be sent to it. A call already running on the light can still finish. If `skip_restore` is true, the integration also skips restoring the light to its pre-animation state.
 
 ### Add Lights To A Running Animation
 

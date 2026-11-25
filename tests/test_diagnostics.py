@@ -23,7 +23,7 @@ async def test_diagnostics_redacts_entity_ids_and_reports_runtime(
     for light in ("light.kitchen", "light.hall"):
         manager.light_owner[light] = object()  # type: ignore[assignment]
     for light in ("light.kitchen", "light.hall", "light.porch"):
-        manager.states[light] = object()
+        manager.store_state(light)
     entry = _diagnostic_entry()
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
