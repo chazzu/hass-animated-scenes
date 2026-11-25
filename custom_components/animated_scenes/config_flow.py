@@ -24,7 +24,7 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.util import uuid
 import voluptuous as vol
 
-from .animations import Animations
+from .animations import get_manager
 from .const import (
     ABORT_ACTIVITY_SENSOR_EXISTS,
     ABORT_ACTIVITY_SENSOR_NO_OPTIONS,
@@ -670,7 +670,7 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
 
         """
         new_name = self._data.get(CONF_NAME)
-        manager = Animations.instance
+        manager = get_manager(self.hass)
         if (
             manager
             and previous_name

@@ -12,7 +12,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .animations import Animations
+from .animations import get_manager
 
 TO_REDACT: set[str] = {"animated_scene_switch", "entity_id", "lights", "name"}
 
@@ -52,7 +52,7 @@ async def async_get_config_entry_diagnostics(
         counts from the active animation manager.
 
     """
-    runtime = _runtime_diagnostics()
+    runtime = _runtime_diagnostics(hass)
     return {
         "entry": {
             "title": "**REDACTED**",
@@ -63,9 +63,9 @@ async def async_get_config_entry_diagnostics(
     }
 
 
-def _runtime_diagnostics() -> dict[str, int]:
+def _runtime_diagnostics(hass: HomeAssistant) -> dict[str, int]:
     """Return runtime animation counters, or zeros before manager initialization."""
-    manager = Animations.instance
+    manager = get_manager(hass)
     if manager is None:
         return {
             "active_animation_count": 0,

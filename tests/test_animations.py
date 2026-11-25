@@ -113,9 +113,9 @@ def _scene_entry() -> ConfigEntry:
 
 
 def _runtime_manager(hass: HomeAssistant) -> Animations:
-    """Return a runtime manager registered as the active singleton."""
+    """Return a runtime manager registered on the test Home Assistant instance."""
     manager = Animations(hass)
-    Animations.instance = manager
+    hass.data[DOMAIN] = manager
     return manager
 
 
@@ -184,9 +184,25 @@ def test_repeating_animation_frequency_is_never_zero(hass: HomeAssistant) -> Non
     for change_frequency in (0.1, [0.1, 0.2]):
         config = _animation_config("Repeating", ["light.one"])
         config["change_frequency"] = change_frequency
-        animation = Animation(hass, manager.validate_start(config))
+        animation = Animation(manager, manager.validate_start(config))
 
         assert all(animation.get_change_frequency() >= 0.1 for _ in range(20))
+
+
+@pytest.mark.parametrize("endpoint", [0.14, 0.16])
+def test_fractional_timing_stays_within_bounds(hass: HomeAssistant, endpoint: float) -> None:
+    """Keep both transition and frequency inside a range narrower than one tenth."""
+    manager = _runtime_manager(hass)
+    hass.states.async_set("light.one", "on")
+    config = {
+        **_animation_config("Narrow", ["light.one"]),
+        "change_frequency": [0.14, 0.16],
+        "transition": [0.14, 0.16],
+    }
+    animation = Animation(manager, manager.validate_start(config))
+    with patch("custom_components.animated_scenes.animations.uniform", return_value=endpoint):
+        assert animation.get_change_frequency() == endpoint
+        assert animation.get_transition() == endpoint
 
 
 @pytest.mark.parametrize("register_service", [False, True], ids=["missing", "invalid_payload"])
@@ -633,8 +649,8 @@ async def test_start_service_accepts_text_change_amount(
 ) -> None:
     """Accept change_amount values submitted by the text service selector."""
     await async_setup(hass, {})
-    assert Animations.instance is not None
-    manager = Animations.instance
+    assert hass.data[DOMAIN] is not None
+    manager = hass.data[DOMAIN]
     register_light_services(hass)
     hass.states.async_set("light.one", "on", LIGHT_ON)
 
@@ -692,7 +708,7 @@ async def test_unload_stops_running_scene_and_keeps_services(hass: HomeAssistant
     register_light_services(hass)
     hass.states.async_set("light.one", "on", LIGHT_ON)
     entry = await _setup_scene_entry(hass, _full_scene_data())
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": "switch.animated_scenes_spooky"}, blocking=True
@@ -705,7 +721,7 @@ async def test_unload_stops_running_scene_and_keeps_services(hass: HomeAssistant
 
     assert animation_tasks("Spooky") == []
     assert manager.animations == {}
-    assert Animations.instance is manager
+    assert hass.data[DOMAIN] is manager
 
     await hass.services.async_call(
         DOMAIN,
@@ -745,7 +761,7 @@ async def test_legacy_scene_migrates_runs_and_unloads(hass: HomeAssistant) -> No
     register_light_services(hass)
     hass.states.async_set("light.one", "on", LIGHT_ON)
     entry = await _setup_scene_entry(hass, _full_scene_data("Legacy"))
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
 
     assert entry.version == 2
@@ -766,7 +782,7 @@ async def test_stored_zero_start_frequency_range_still_runs(hass: HomeAssistant)
     register_light_services(hass)
     hass.states.async_set("light.one", "on", LIGHT_ON)
     await _setup_scene_entry(hass, {**_full_scene_data(), "change_frequency": [0, 5]})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
 
     await hass.services.async_call(
@@ -1087,7 +1103,7 @@ async def test_priority_handoff_light_script_can_stop_another_scene(
 ) -> None:
     """Complete a nested Animated Scenes service from a handoff's light handler."""
     await async_setup(hass, {})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     script = Script(
         hass,
@@ -1132,7 +1148,7 @@ async def test_priority_handoff_light_script_can_stop_another_scene(
 async def test_one_shot_handoff_applies_after_delayed_initial_write(hass: HomeAssistant) -> None:
     """Restore the returning owner's color after a delayed one-shot service call."""
     await async_setup(hass, {})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     entered_one_shot = asyncio.Event()
     finish_one_shot = asyncio.Event()
@@ -1452,7 +1468,7 @@ async def test_sequence_scene_with_zero_weights_starts_from_switch(hass: HomeAss
         ],
     }
     await _setup_scene_entry(hass, data)
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
 
     await hass.services.async_call(
@@ -1474,7 +1490,7 @@ async def test_random_scene_with_zero_weights_is_rejected_by_switch(hass: HomeAs
         "colors": [{"color_type": "rgb_color", "color": [255, 0, 0], "weight": 0}],
     }
     await _setup_scene_entry(hass, data)
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
 
     with pytest.raises(IntegrationError):

@@ -482,7 +482,7 @@ async def test_concurrent_yaml_options_renames_keep_names_unique(
         hass, extra={"icon": "mdi:home"}, entry_id="other", name="Creepy"
     )
     manager = Animations(hass)
-    Animations.instance = manager
+    hass.data[DOMAIN] = manager
     register_light_services(hass)
     hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
     for name in ("Spooky", "Creepy"):
@@ -534,7 +534,7 @@ async def test_concurrent_rgb_options_renames_keep_names_unique(
         name="Creepy",
     )
     manager = Animations(hass)
-    Animations.instance = manager
+    hass.data[DOMAIN] = manager
     register_light_services(hass)
     hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
     for name in ("Spooky", "Creepy"):
@@ -962,7 +962,7 @@ async def test_options_rename_stops_previous_animation_before_reload(
 ) -> None:
     """Stop an active pre-rename animation before options update entry data."""
     manager = Animations(hass)
-    Animations.instance = manager
+    hass.data[DOMAIN] = manager
     register_light_services(hass)
     hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
     await manager.start(
@@ -1022,7 +1022,7 @@ async def test_options_rename_keeps_unrelated_service_animation_with_new_name(
     for light in ("light.one", "light.two"):
         hass.states.async_set(light, "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
     entry = await _setup_real_scene_entry(hass)
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     await hass.services.async_call(
         DOMAIN,
@@ -1076,7 +1076,7 @@ async def test_options_keep_stored_decimal_timings_when_fields_are_omitted(
     assert result["type"] == "create_entry"
     assert entry.data["change_frequency"] == 0.5
     assert entry.data[CONF_TRANSITION] == 0.5
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     await manager.stop({CONF_NAME: "Spooky"})
 

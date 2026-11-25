@@ -15,7 +15,6 @@ import colorsys
 from dataclasses import dataclass
 from functools import lru_cache
 import logging
-import math
 from random import choices, randrange, sample, uniform
 from typing import Any, Literal
 
@@ -223,11 +222,11 @@ class Animation:
     the ongoing updates.
     """
 
-    def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
+    def __init__(self, manager: Animations, config: dict[str, Any]) -> None:
         """Initialize an Animation.
 
         Args:
-            hass: The Home Assistant instance.
+            manager: Runtime manager that owns this animation.
             config: Validated configuration for the animation (from the
                 START service schema).
 
@@ -244,7 +243,8 @@ class Animation:
         self._change_frequency: NumberConfig = config[CONF_CHANGE_FREQUENCY]
         self._colors: list[ColorConfig] = config[CONF_COLORS]
         self._current_color_index: int = 0
-        self._hass: HomeAssistant = hass
+        self._manager = manager
+        self._hass = manager.hass
         self._ignore_off: bool = config[CONF_IGNORE_OFF]
         self._lights: list[str] = config[CONF_LIGHTS]
         self._light_status: dict[str, Any] = {}
@@ -330,11 +330,10 @@ class Animation:
         if state is None:
             _LOGGER.warning("Entity %s not found, skipping", entity_id)
             return
-        manager = Animations.instance
         if entity_id not in self._active_lights and (
             state.state != "off"
             or self._ignore_off
-            or (manager and manager.has_pending_restore_on(entity_id))
+            or self._manager.has_pending_restore_on(entity_id)
         ):
             self._active_lights.append(entity_id)
 
@@ -350,8 +349,7 @@ class Animation:
         """
         for light in ids:
             self.add_light(light)
-        if Animations.instance:
-            Animations.instance.store_states(self._active_lights)
+        self._manager.store_states(self._active_lights)
 
     async def animate(self) -> None:
         """Run the main animation loop.
@@ -365,16 +363,14 @@ class Animation:
 
         """
         try:
-            if Animations.instance and self._task:
-                while (
-                    Animations.instance.animations.get(self._name) is self and not self._task.done()
-                ):
+            if self._task:
+                while self._manager.animations.get(self._name) is self and not self._task.done():
                     await self.update_lights()
                     frequency = self.get_change_frequency()
                     await asyncio.sleep(frequency)
         finally:
             _LOGGER.info("Animation '%s' has been stopped", self._name)
-            if Animations.instance and self._name not in Animations.instance.animations:
+            if self._name not in self._manager.animations:
                 _LOGGER.info(
                     "Animation '%s' was removed from list of active animations",
                     self._name,
@@ -699,9 +695,9 @@ class Animation:
         """Return a concrete value from either a static or range value.
 
         If `value` is a list it will be treated as a two-element range and
-        a random value within the range will be returned. If either bound
-        is a float the result will be a rounded float, otherwise an int
-        step-based random integer is returned.
+        a random value within the range will be returned. Float ranges are
+        rounded to tenths and clamped to their bounds. Integer ranges
+        use the specified step.
 
         Args:
             value: Either a single value or a two-item sequence representing
@@ -714,12 +710,8 @@ class Animation:
         """
         if isinstance(value, list):
             if isinstance(value[0], float) or isinstance(value[1], float):
-                # Use math.nextafter to nudge the upper bound slightly upward so
-                # that after rounding the result can inclusively reach the
-                # configured upper value. This makes the behavior effectively
-                # inclusive for the rounded one-decimal result.
-                upper = math.nextafter(value[1], math.inf)
-                return round(uniform(value[0], upper), 1)
+                low, high = value
+                return min(high, max(low, round(uniform(low, high), 1)))
             # randrange's stop is exclusive. Add `step` to the stop value so
             # the configured upper bound can be selected when it aligns with
             # the step. This makes the integer range behave inclusively.
@@ -759,18 +751,16 @@ class Animation:
         """
         try:
             for light in list(self._active_lights):
-                if Animations.instance:
-                    await Animations.instance.release_light(
-                        self,
-                        light,
-                        skip_ownership=light in self._restart_owned_lights,
-                        skip_restore=light in self._restart_lights,
-                        refresh=False,
-                    )
+                await self._manager.release_light(
+                    self,
+                    light,
+                    skip_ownership=light in self._restart_owned_lights,
+                    skip_restore=light in self._restart_lights,
+                    refresh=False,
+                )
         finally:
-            if Animations.instance:
-                Animations.instance.release_animation(self)
-                Animations.instance.refresh_listener()
+            self._manager.release_animation(self)
+            self._manager.refresh_listener()
             if not self._replaced:
                 self._hass.bus.async_fire(
                     EVENT_NAME_CHANGE,
@@ -821,20 +811,17 @@ class Animation:
             None
 
         """
-        manager = Animations.instance
-        if manager and manager.get_animation_for_light(entity_id) is not self:
+        manager = self._manager
+        if manager.get_animation_for_light(entity_id) is not self:
             _LOGGER.info(
                 "Skipping light %s due to conflicting animation with higher priority, %s",
                 entity_id,
                 self._name,
             )
             return
-        if skip_if_busy and manager and manager.is_light_write_pending(entity_id):
+        if skip_if_busy and manager.is_light_write_pending(entity_id):
             return
         attributes = self.build_light_attributes(entity_id, initial)
-        if manager is None:
-            await safe_call(self._hass, LIGHT_DOMAIN, SERVICE_TURN_ON, attributes)
-            return
 
         async def apply() -> None:
             """Recheck power after preceding operations and apply the scene color."""
@@ -896,20 +883,17 @@ class Animation:
             except asyncio.CancelledError:
                 _LOGGER.info("Animation '%s' has been cancelled", self._name)
             # A task cancelled before its first step never runs animate()'s cleanup.
-            manager = Animations.instance
-            if manager and manager.animations.get(self._name) is self:
+            if self._manager.animations.get(self._name) is self:
                 await self.release()
 
 
 class Animations:
     """Manager for all running animations in the system.
 
-    This singleton-like class keeps track of running animations, stored
+    Each Home Assistant instance has one manager tracking running animations, stored
     previous light states, and ownership of lights when multiple
     animations request the same entity.
     """
-
-    instance: Animations | None = None
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the animations manager with empty state."""
@@ -1142,7 +1126,7 @@ class Animations:
         animation: Animation | None = None
         startup_complete = False
         try:
-            animation = Animation(self.hass, config)
+            animation = Animation(self, config)
             active_lights = animation.get_active_lights()
             unused_states = [
                 light
@@ -1521,3 +1505,8 @@ class Animations:
             _LOGGER.exception("Error with received configuration")
             raise IntegrationError("Service data did not match schema") from err
         return config
+
+
+def get_manager(hass: HomeAssistant) -> Animations | None:
+    """Return the manager for this Home Assistant instance after domain setup."""
+    return hass.data.get(DOMAIN)

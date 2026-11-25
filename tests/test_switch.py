@@ -70,9 +70,9 @@ def _switch_config() -> dict[str, object]:
 
 
 def _runtime_manager(hass: HomeAssistant) -> Animations:
-    """Return a runtime manager registered as the active singleton."""
+    """Return a runtime manager registered on the test Home Assistant instance."""
     manager = Animations(hass)
-    Animations.instance = manager
+    hass.data[DOMAIN] = manager
     return manager
 
 
@@ -226,7 +226,7 @@ def test_platform_schema_checks_color_weights_for_random_mode(
 async def test_switch_syncs_with_scene_started_before_entry_setup(hass: HomeAssistant) -> None:
     """Show a service-started scene as on and keep turn-on from restarting it."""
     assert await async_setup_component(hass, DOMAIN, {})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     calls = register_light_services(hass)
     hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
@@ -319,7 +319,7 @@ async def test_switch_turn_off_stops_running_scene(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
 
     await hass.services.async_call(

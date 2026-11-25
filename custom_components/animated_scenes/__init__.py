@@ -1,5 +1,6 @@
 """The Animated Scenes integration."""
 
+from functools import partial
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -7,7 +8,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
-from .animations import Animations
+from .animations import Animations, get_manager
 from .const import CONF_ENTITY_TYPE, DOMAIN, ENTITY_ACTIVITY_SENSOR, ENTITY_SCENE
 from .scene_config import (
     ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA,
@@ -24,7 +25,7 @@ async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:
     """Set up the Animated Scenes integration.
 
     This registers the integration services (start/stop animations and
-    add/remove lights) and creates the shared Animations singleton used
+    add/remove lights) and creates the shared Animations manager used
     by the platforms.
 
     Args:
@@ -35,31 +36,32 @@ async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:
         True on successful setup.
 
     """
+    manager = Animations(hass)
+    hass.data[DOMAIN] = manager
     hass.services.async_register(
         DOMAIN,
         "start_animation",
-        start_animation,
+        partial(start_animation, manager),
         schema=START_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
     hass.services.async_register(
         DOMAIN,
         "stop_animation",
-        stop_animation,
+        partial(stop_animation, manager),
         schema=STOP_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
     hass.services.async_register(
         DOMAIN,
         "remove_lights",
-        remove_lights,
+        partial(remove_lights, manager),
         schema=REMOVE_LIGHTS_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
     hass.services.async_register(
         DOMAIN,
         "add_lights_to_animation",
-        add_lights_to_animation,
+        partial(add_lights_to_animation, manager),
         schema=ADD_LIGHTS_TO_ANIMATION_SERVICE_SCHEMA,  # type: ignore[arg-type, unused-ignore]
     )
-    Animations.instance = Animations(hass)
     return True
 
 
@@ -122,7 +124,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     """
     _LOGGER.info("Unloading: %s", entry.data)
-    manager = Animations.instance
+    manager = get_manager(hass)
     unload_ok: bool = False
     entity_type = entry.data.get(CONF_ENTITY_TYPE, ENTITY_SCENE)
     if entity_type == ENTITY_SCENE:

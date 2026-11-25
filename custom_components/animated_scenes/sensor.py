@@ -14,7 +14,7 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .animations import Animations
+from .animations import get_manager
 from .const import DEFAULT_ACTIVITY_SENSOR_ICON, EVENT_NAME_CHANGE
 from .entity import integration_device_info
 
@@ -86,7 +86,7 @@ class AnimatedScenesSensor(SensorEntity):
     @property
     def native_value(self) -> int:
         """Return the number of active animations."""
-        manager = Animations.instance
+        manager = get_manager(self.hass)
         if manager:
             return len(manager.animations)
         return 0
@@ -98,7 +98,7 @@ class AnimatedScenesSensor(SensorEntity):
         Returns a mapping containing the list of active animations and the
         list of lights currently owned by animations.
         """
-        manager = Animations.instance
+        manager = get_manager(self.hass)
         if manager:
             return {
                 "active": list(manager.animations.keys()),

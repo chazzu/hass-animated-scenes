@@ -11,7 +11,6 @@ from types import ModuleType
 import pytest
 
 import custom_components
-from custom_components.animated_scenes.animations import Animations
 
 pytest_plugins = ("pytest_homeassistant_custom_component",)
 
@@ -33,21 +32,6 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
 
     """
     assert enable_custom_integrations is None
-
-
-@pytest.fixture(autouse=True)
-def restore_animations_instance() -> Iterator[None]:
-    """Restore the global animation singleton after each test.
-
-    Yields:
-        None.
-
-    """
-    previous_instance = Animations.instance
-    try:
-        yield
-    finally:
-        Animations.instance = previous_instance
 
 
 def _load_script_module(module_name: str, script_path: Path) -> Iterator[ModuleType]:

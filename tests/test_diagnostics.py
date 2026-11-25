@@ -17,7 +17,7 @@ async def test_diagnostics_redacts_entity_ids_and_reports_runtime(
 ) -> None:
     """Return redacted config data with a summary of runtime manager state."""
     manager = Animations(hass)
-    Animations.instance = manager
+    hass.data[DOMAIN] = manager
     # Distinct sizes so a swapped or mislabeled counter is detected.
     manager.animations["Spooky"] = object()  # type: ignore[assignment]
     for light in ("light.kitchen", "light.hall"):
@@ -45,8 +45,6 @@ async def test_diagnostics_redacts_entity_ids_and_reports_runtime(
 @pytest.mark.asyncio
 async def test_diagnostics_reports_zero_runtime(hass: HomeAssistant) -> None:
     """Return zero runtime counters before the animation manager is initialized."""
-    Animations.instance = None
-
     diagnostics = await async_get_config_entry_diagnostics(hass, _diagnostic_entry())
 
     assert diagnostics["runtime"] == {

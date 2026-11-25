@@ -5,10 +5,10 @@ from __future__ import annotations
 from homeassistant.const import CONF_NAME
 from homeassistant.core import Event, HomeAssistant, callback
 import pytest
+from pytest_homeassistant_custom_component.common import async_test_home_assistant
 import voluptuous as vol
 
 from custom_components.animated_scenes import async_setup
-from custom_components.animated_scenes.animations import Animations
 from custom_components.animated_scenes.const import (
     CONF_LIGHTS,
     DOMAIN,
@@ -43,10 +43,49 @@ async def test_services_reject_malformed_data(
         await hass.services.async_call(DOMAIN, service, data, blocking=True)
 
 
+async def test_same_named_scenes_are_isolated_between_hass_instances(hass: HomeAssistant) -> None:
+    """Stopping a scene restores only the light on the instance that received the call."""
+    data = {
+        CONF_NAME: "Spooky",
+        CONF_LIGHTS: ["light.one"],
+        "colors": COLORS,
+        "change_frequency": 3600,
+        "change_amount": 0,
+        "restore": True,
+    }
+    await async_setup(hass, {})
+    first_calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", ORIGINAL)
+    await hass.services.async_call(DOMAIN, "start_animation", data, blocking=True)
+    async with async_test_home_assistant() as other:
+        try:
+            await async_setup(other, {})
+            second_calls = register_light_services(other)
+            other.states.async_set("light.one", "on", {**ORIGINAL, "rgb_color": (4, 5, 6)})
+            await other.services.async_call(DOMAIN, "start_animation", data, blocking=True)
+            await other.async_block_till_done()
+            second_calls.clear()
+
+            await hass.services.async_call(
+                DOMAIN, "stop_animation", {CONF_NAME: "Spooky"}, blocking=True
+            )
+            await hass.async_block_till_done()
+            assert first_calls[-1]["rgb_color"] == (1, 2, 3)
+            assert second_calls == []
+
+            await other.services.async_call(
+                DOMAIN, "stop_animation", {CONF_NAME: "Spooky"}, blocking=True
+            )
+            await other.async_block_till_done()
+            assert second_calls[-1]["rgb_color"] == (4, 5, 6)
+        finally:
+            await other.async_stop()
+
+
 async def test_service_lifecycle_controls_lights(hass: HomeAssistant) -> None:
     """Start, extend, shrink, and stop a scene through its public services."""
     await async_setup(hass, {})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     calls = register_light_services(hass)
     for light in ("light.one", "light.two"):
@@ -89,7 +128,7 @@ async def test_start_service_uses_shared_defaults_for_omitted_fields(
 ) -> None:
     """Keep existing automations unchanged when they omit optional fields."""
     await async_setup(hass, {})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     register_light_services(hass)
     for light in ("light.one", "light.two"):
@@ -117,7 +156,7 @@ async def test_start_service_uses_shared_defaults_for_omitted_fields(
 async def test_start_service_accepts_tuple_ranges(hass: HomeAssistant) -> None:
     """Start an animation from tuple ranges, as automations can supply them."""
     await async_setup(hass, {})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     register_light_services(hass)
     for light in ("light.one", "light.two"):
@@ -147,7 +186,7 @@ async def test_start_service_accepts_tuple_ranges(hass: HomeAssistant) -> None:
 async def test_start_service_accepts_text_change_amount_range(hass: HomeAssistant) -> None:
     """Start a scene from a text change-amount range through the real service."""
     await async_setup(hass, {})
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     register_light_services(hass)
     hass.states.async_set("light.one", "on", ORIGINAL)
@@ -194,7 +233,7 @@ async def test_start_service_rejects_huge_numbers(
             {CONF_NAME: "Spooky", CONF_LIGHTS: ["light.one"], "colors": COLORS, field: value},
             blocking=True,
         )
-    manager = Animations.instance
+    manager = hass.data[DOMAIN]
     assert manager is not None
     assert manager.animations == {}
 

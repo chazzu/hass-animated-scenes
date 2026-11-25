@@ -2,8 +2,8 @@
 
 This module provides a switch entity that represents an animated scene
 so that scenes can be managed from the Home Assistant UI or via YAML
-imports. The switch delegates start/stop operations to the Animations
-singleton.
+imports. The switch delegates start/stop operations to the runtime
+manager.
 """
 
 import copy
@@ -21,7 +21,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import slugify
 import voluptuous as vol
 
-from .animations import Animations
+from .animations import get_manager
 from .const import (
     COLOR_SELECTOR_RGB_UI,
     CONF_ANIMATE_BRIGHTNESS,
@@ -168,7 +168,7 @@ class AnimatedSceneSwitch(SwitchEntity):
     """Switch entity representing a single animated scene.
 
     The switch exposes the scene configuration as attributes and forwards
-    turn_on/turn_off operations to the Animations singleton.
+    turn_on/turn_off operations to the runtime manager.
     """
 
     _unrecorded_attributes = frozenset({MATCH_ALL})
@@ -259,7 +259,7 @@ class AnimatedSceneSwitch(SwitchEntity):
         self.async_on_remove(
             self.hass.bus.async_listen(EVENT_NAME_CHANGE, self._handle_animation_event)
         )
-        manager = Animations.instance
+        manager = get_manager(self.hass)
         self._attr_is_on = manager is not None and self._attr_name in manager.animations
 
     @callback
@@ -296,7 +296,7 @@ class AnimatedSceneSwitch(SwitchEntity):
 
         """
         if not self._attr_is_on:
-            manager = Animations.instance
+            manager = get_manager(self.hass)
             if manager:
                 # A start failure propagates so callers and traces see it; the
                 # switch was off before this call and stays off.
@@ -310,6 +310,6 @@ class AnimatedSceneSwitch(SwitchEntity):
     async def async_turn_off(self, **_: Any) -> None:
         """Turn the switch off and stop the corresponding animation."""
         self._attr_is_on = False
-        manager = Animations.instance
+        manager = get_manager(self.hass)
         if manager:
             await manager.stop({"name": self._attr_name})
