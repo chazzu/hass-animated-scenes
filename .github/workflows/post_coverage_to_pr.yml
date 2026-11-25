@@ -26,36 +26,59 @@ jobs:
           script: |
             const workflowRun = context.payload.workflow_run;
             const { owner, repo } = context.repo;
-            let prNumber = workflowRun.pull_requests?.[0]?.number;
+            const headRepository = workflowRun.head_repository?.full_name;
+            const headBranch = workflowRun.head_branch;
+            const runPullRequests = workflowRun.pull_requests ?? [];
+            let pullRequest;
 
-            // Fork runs have no pull_requests entry, so match the exact run head.
-            if (prNumber === undefined) {
-              const headRepository = workflowRun.head_repository?.full_name;
-              const { data: candidates } =
-                await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                  owner,
-                  repo,
-                  commit_sha: workflowRun.head_sha,
-                  per_page: 100,
-                });
-              const match = headRepository
-                ? candidates.find(
-                    (candidate) =>
-                      candidate.state === 'open' &&
-                      candidate.base.repo?.full_name === `${owner}/${repo}` &&
-                      candidate.head.sha === workflowRun.head_sha &&
-                      candidate.head.repo?.full_name === headRepository &&
-                      candidate.head.ref === workflowRun.head_branch,
-                  )
-                : undefined;
-              prNumber = match?.number;
-            }
+            if (runPullRequests.length === 1) {
+              const { data } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: runPullRequests[0].number,
+              });
+              pullRequest = data;
+            } else if (runPullRequests.length === 0 && headRepository && headBranch) {
+              // Fork workflow runs omit pull_requests, so resolve the exact head.
+              const candidates = await github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: 'open',
+                head: `${headRepository.split('/')[0]}:${headBranch}`,
+                per_page: 100,
+              });
+              const matchingPullRequests = candidates.filter(
+                (candidate) =>
+                  candidate.base.repo?.full_name === `${owner}/${repo}` &&
+                  candidate.head.repo?.full_name === headRepository &&
+                  candidate.head.ref === headBranch &&
+                  candidate.head.sha === workflowRun.head_sha,
+              );
 
-            if (prNumber === undefined) {
-              core.info('Skipping coverage comment: no matching pull request was found.');
+              if (matchingPullRequests.length !== 1) {
+                core.info(
+                  `Skipping coverage comment: expected one open pull request for ${headRepository}:${headBranch} at ${workflowRun.head_sha}, found ${matchingPullRequests.length}.`,
+                );
+                return;
+              }
+              pullRequest = matchingPullRequests[0];
+            } else {
+              core.info('Skipping coverage comment: the workflow run does not identify one pull request.');
               return;
             }
-            core.setOutput('pr_number', String(prNumber));
+
+            if (
+              pullRequest.state !== 'open' ||
+              pullRequest.base.repo?.full_name !== `${owner}/${repo}` ||
+              pullRequest.head.repo?.full_name !== headRepository ||
+              pullRequest.head.ref !== headBranch ||
+              pullRequest.head.sha !== workflowRun.head_sha
+            ) {
+              core.info('Skipping coverage comment: the workflow run does not match the open pull request.');
+              return;
+            }
+
+            core.setOutput('pr_number', String(pullRequest.number));
 
   post_coverage_comment:
     name: Post coverage Comment to PR
@@ -119,10 +142,67 @@ jobs:
 
       - name: Post coverage Comment to PR
         if: steps.coverage_eligibility.outputs.should_post == 'true'
-        uses: py-cov-action/python-coverage-comment-action@v3
+        uses: actions/download-artifact@v8
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_PR_RUN_ID: ${{ github.event.workflow_run.id }}
-          # Update those if you changed the default values:
-          # COMMENT_ARTIFACT_NAME: python-coverage-comment-action
-          # COMMENT_FILENAME: python-coverage-comment-action.txt
+          name: python-coverage-comment-action
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/coverage-comment
+
+      - name: Publish coverage comment to resolved PR
+        if: steps.coverage_eligibility.outputs.should_post == 'true'
+        uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ needs.resolve_pull_request.outputs.pr_number }}
+          COMMENT_FILE: ${{ runner.temp }}/coverage-comment/python-coverage-comment-action.txt
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const commentFile = process.env.COMMENT_FILE;
+
+            if (!fs.existsSync(commentFile)) {
+              core.info('Skipping coverage comment: the workflow run artifact has no comment file.');
+              return;
+            }
+
+            const body = fs.readFileSync(commentFile, 'utf8');
+            const marker = '<!-- This comment was produced by python-coverage-comment-action -->';
+            if (!body.includes(marker)) {
+              throw new Error('Coverage comment artifact is missing its ownership marker.');
+            }
+
+            let login;
+            try {
+              ({ data: { login } } = await github.rest.users.getAuthenticated());
+            } catch (error) {
+              if (error.status !== 403) throw error;
+              login = 'github-actions[bot]';
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const existingComment = comments.find(
+              (comment) => comment.user.login === login && comment.body.includes(marker),
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body,
+              });
+            }

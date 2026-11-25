@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 from typing import Any
 
 import pytest
@@ -114,15 +118,112 @@ def test_coverage_comment_rechecks_head_inside_serialized_job() -> None:
 
 
 def test_fork_coverage_runs_resolve_only_exact_open_pr_heads() -> None:
-    """Match fork runs by repository, branch, and exact commit before queueing."""
+    """Resolve fork runs by repository, branch, and exact commit before queueing."""
     job = _job("post_coverage_to_pr.yml", "resolve_pull_request")
     resolution = _step(job, "Resolve pull request for coverage run")["with"]["script"]
 
-    assert "workflowRun.pull_requests?.[0]?.number" in resolution
-    assert "candidate.state === 'open'" in resolution
-    assert "candidate.head.sha === workflowRun.head_sha" in resolution
+    assert "github.paginate(github.rest.pulls.list" in resolution
     assert "candidate.head.repo?.full_name === headRepository" in resolution
-    assert "candidate.head.ref === workflowRun.head_branch" in resolution
+    assert "candidate.head.ref === headBranch" in resolution
+    assert "candidate.head.sha === workflowRun.head_sha" in resolution
+
+
+def _run_workflow_script(script: str, harness: str, environment: dict[str, str]) -> dict[str, Any]:
+    """Execute a GitHub Actions script inside its mocked JavaScript harness."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to exercise the GitHub Actions script")
+    result = subprocess.run(  # noqa: S603 - the script and harness are checked-in test inputs
+        [node, "-e", harness.replace("__WORKFLOW_SCRIPT__", script)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    return json.loads(result.stdout)
+
+
+def test_run_identified_pr_wins_when_source_branch_has_sibling_pr() -> None:
+    """Use the PR number attached to the run when its branch has another target."""
+    job = _job("post_coverage_to_pr.yml", "resolve_pull_request")
+    script = _step(job, "Resolve pull request for coverage run")["with"]["script"]
+    harness = """
+const outputs = {};
+const context = {
+  repo: { owner: 'Snuffy2', repo: 'hass-animated-scenes' },
+  payload: { workflow_run: {
+    pull_requests: [{ number: 101 }],
+    head_repository: { full_name: 'Snuffy2/hass-animated-scenes' },
+    head_branch: 'feature',
+    head_sha: 'abc123',
+  } },
+};
+const github = {
+  paginate: async () => { throw new Error('Run PR identity should avoid branch lookup'); },
+  rest: { pulls: {
+    get: async (args) => {
+      if (args.pull_number !== 101) throw new Error('Unexpected PR lookup');
+      return { data: {
+        number: 101, state: 'open',
+        base: { repo: { full_name: 'Snuffy2/hass-animated-scenes' } },
+        head: {
+          repo: { full_name: 'Snuffy2/hass-animated-scenes' },
+          ref: 'feature', sha: 'abc123',
+        },
+      } };
+    },
+  } },
+};
+const core = { setOutput: (key, value) => { outputs[key] = value; }, info: () => {} };
+(async () => {
+__WORKFLOW_SCRIPT__
+  console.log(JSON.stringify(outputs));
+})().catch((error) => { console.error(error); process.exit(1); });
+"""
+    assert _run_workflow_script(script, harness, os.environ.copy()) == {"pr_number": "101"}
+
+
+def test_coverage_comment_writes_only_to_resolved_pr_with_sibling(tmp_path: Path) -> None:
+    """Post to the resolved PR even when a sibling PR has the action marker."""
+    workflow = yaml.safe_load((WORKFLOWS / "post_coverage_to_pr.yml").read_text(encoding="utf-8"))
+    job = workflow["jobs"]["post_coverage_comment"]
+    script = _step(job, "Publish coverage comment to resolved PR")["with"]["script"]
+    comment_file = tmp_path / "python-coverage-comment-action.txt"
+    marker = "<!-- This comment was produced by python-coverage-comment-action -->"
+    comment_file.write_text(f"{marker}\nCoverage details", encoding="utf-8")
+    harness = f"""
+const writes = [];
+const reads = [];
+const context = {{ repo: {{ owner: 'Snuffy2', repo: 'hass-animated-scenes' }} }};
+const github = {{
+  paginate: async (_method, args) => {{
+    reads.push(args.issue_number);
+    if (args.issue_number === 101) return [{{ id: 899, user: {{ login: 'reviewer' }}, body: {json.dumps(marker)} }}];
+    if (args.issue_number === 102) return [{{ id: 900, user: {{ login: 'github-actions[bot]' }}, body: {json.dumps(marker)} }}];
+    throw new Error('Unexpected PR read');
+  }},
+  rest: {{
+    users: {{ getAuthenticated: async () => ({{ data: {{ login: 'github-actions[bot]' }} }}) }},
+    issues: {{
+      listComments: () => {{}},
+      createComment: async (args) => writes.push({{ operation: 'create', issue_number: args.issue_number }}),
+      updateComment: async (args) => writes.push({{ operation: 'update', comment_id: args.comment_id }}),
+    }},
+  }},
+}};
+const core = {{ info: () => {{}} }};
+(async () => {{
+__WORKFLOW_SCRIPT__
+  console.log(JSON.stringify({{ reads, writes }}));
+}})().catch((error) => {{ console.error(error); process.exit(1); }});
+"""
+    environment = os.environ.copy()
+    environment["PR_NUMBER"] = "101"
+    environment["COMMENT_FILE"] = str(comment_file)
+    assert _run_workflow_script(script, harness, environment) == {
+        "reads": [101],
+        "writes": [{"operation": "create", "issue_number": 101}],
+    }
 
 
 def test_release_checks_out_full_history_at_tag_ref() -> None:
