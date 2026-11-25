@@ -1,0 +1,208 @@
+name: Post coverage Comment to PR
+
+on:
+  workflow_run:
+    workflows: ['pytest and coverage']
+    types:
+      - completed
+
+jobs:
+  resolve_pull_request:
+    name: Resolve coverage target PR
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+    steps:
+      # DO NOT run actions/checkout here, for security reasons
+      # For details, refer to https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+      - name: Resolve pull request for coverage run
+        id: resolve
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const workflowRun = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const headRepository = workflowRun.head_repository?.full_name;
+            const headBranch = workflowRun.head_branch;
+            const runPullRequests = workflowRun.pull_requests ?? [];
+            let pullRequest;
+
+            if (runPullRequests.length === 1) {
+              const { data } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: runPullRequests[0].number,
+              });
+              pullRequest = data;
+            } else if (runPullRequests.length === 0 && headRepository && headBranch) {
+              // Fork workflow runs omit pull_requests, so resolve the exact head.
+              const candidates = await github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: 'open',
+                head: `${headRepository.split('/')[0]}:${headBranch}`,
+                per_page: 100,
+              });
+              const matchingPullRequests = candidates.filter(
+                (candidate) =>
+                  candidate.base.repo?.full_name === `${owner}/${repo}` &&
+                  candidate.head.repo?.full_name === headRepository &&
+                  candidate.head.ref === headBranch &&
+                  candidate.head.sha === workflowRun.head_sha,
+              );
+
+              if (matchingPullRequests.length !== 1) {
+                core.info(
+                  `Skipping coverage comment: expected one open pull request for ${headRepository}:${headBranch} at ${workflowRun.head_sha}, found ${matchingPullRequests.length}.`,
+                );
+                return;
+              }
+              pullRequest = matchingPullRequests[0];
+            } else {
+              core.info('Skipping coverage comment: the workflow run does not identify one pull request.');
+              return;
+            }
+
+            if (
+              pullRequest.state !== 'open' ||
+              pullRequest.base.repo?.full_name !== `${owner}/${repo}` ||
+              pullRequest.head.repo?.full_name !== headRepository ||
+              pullRequest.head.ref !== headBranch ||
+              pullRequest.head.sha !== workflowRun.head_sha
+            ) {
+              core.info('Skipping coverage comment: the workflow run does not match the open pull request.');
+              return;
+            }
+
+            core.setOutput('pr_number', String(pullRequest.number));
+
+  post_coverage_comment:
+    name: Post coverage Comment to PR
+    runs-on: ubuntu-latest
+    needs: resolve_pull_request
+    if: needs.resolve_pull_request.outputs.pr_number != ''
+    concurrency:
+      group: coverage-comment-pr-${{ needs.resolve_pull_request.outputs.pr_number }}
+      queue: max
+    permissions:
+      # Gives the action the necessary permissions for publishing new
+      # comments in pull requests and editing its existing comments.
+      pull-requests: write
+      # Allows the action to read repository metadata without modifying content.
+      contents: read
+      # Gives the action permission to download the related artifact.
+      actions: read
+    steps:
+      - name: Check coverage comment eligibility
+        id: coverage_eligibility
+        uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ needs.resolve_pull_request.outputs.pr_number }}
+        with:
+          script: |
+            const workflowRun = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            // This check runs inside the per-PR concurrency group so stale queued runs cannot
+            // replace coverage from a newer head.
+            if (pullRequest.head.sha !== workflowRun.head_sha) {
+              core.info(
+                `Skipping coverage comment: PR head ${pullRequest.head.sha} no longer matches workflow run head ${workflowRun.head_sha}.`,
+              );
+              core.setOutput('should_post', 'false');
+              return;
+            }
+
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id: workflowRun.id,
+            });
+            const labels = pullRequest.labels.map((label) => label.name);
+            const hasCommentArtifact = artifacts.artifacts.some(
+              (artifact) =>
+                artifact.name === 'python-coverage-comment-action' && !artifact.expired,
+            );
+            const shouldPost =
+              hasCommentArtifact &&
+              !labels.includes('dependencies') &&
+              pullRequest.user?.type !== 'Bot';
+
+            core.setOutput('should_post', String(shouldPost));
+
+      - name: Post coverage Comment to PR
+        if: steps.coverage_eligibility.outputs.should_post == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: python-coverage-comment-action
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/coverage-comment
+
+      - name: Publish coverage comment to resolved PR
+        if: steps.coverage_eligibility.outputs.should_post == 'true'
+        uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ needs.resolve_pull_request.outputs.pr_number }}
+          COMMENT_FILE: ${{ runner.temp }}/coverage-comment/python-coverage-comment-action.txt
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+            const commentFile = process.env.COMMENT_FILE;
+
+            if (!fs.existsSync(commentFile)) {
+              core.info('Skipping coverage comment: the workflow run artifact has no comment file.');
+              return;
+            }
+
+            const body = fs.readFileSync(commentFile, 'utf8');
+            const marker = '<!-- This comment was produced by python-coverage-comment-action -->';
+            if (!body.includes(marker)) {
+              throw new Error('Coverage comment artifact is missing its ownership marker.');
+            }
+
+            let login;
+            try {
+              ({ data: { login } } = await github.rest.users.getAuthenticated());
+            } catch (error) {
+              if (error.status !== 403) throw error;
+              login = 'github-actions[bot]';
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const existingComment = comments.find(
+              (comment) => comment.user.login === login && comment.body.includes(marker),
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
