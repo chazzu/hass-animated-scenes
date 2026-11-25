@@ -768,16 +768,17 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
             self._data.update(user_input)
             if error := _validate_color_yaml_data(self._data):
                 errors["base"] = error
+            if not errors and scene_name_exists(
+                self.hass, self._data[CONF_NAME], self.config.entry_id
+            ):
+                errors["base"] = ERROR_SCENE_NAME_EXISTS
             if not errors:
                 self._data.update({CONF_COLOR_RGB_DICT: {}})
-                if scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
-                    errors["base"] = ERROR_SCENE_NAME_EXISTS
-                else:
-                    previous_name = self.config.data.get(CONF_NAME)
-                    self._async_save_entry()
-                    await self._async_stop_previous_animation_if_renamed(previous_name)
-                    await self.hass.config_entries.async_reload(self.config.entry_id)
-                    return self.async_create_entry(title="", data={})
+                previous_name = self.config.data.get(CONF_NAME)
+                self._async_save_entry()
+                await self._async_stop_previous_animation_if_renamed(previous_name)
+                await self.hass.config_entries.async_reload(self.config.entry_id)
+                return self.async_create_entry(title="", data={})
 
         return self.async_show_form(
             step_id="color_yaml",
@@ -829,16 +830,15 @@ class AnimatedScenesOptionsFlowHandler(OptionsFlow):
                     errors["base"] = ERROR_COLORS_IS_BLANK
                 elif error := _validate_rgb_ui_runtime_data(candidate_data):
                     errors["base"] = error
+                elif scene_name_exists(self.hass, candidate_data[CONF_NAME], self.config.entry_id):
+                    errors["base"] = ERROR_SCENE_NAME_EXISTS
                 if not errors:
                     self._data = candidate_data
-                    if scene_name_exists(self.hass, self._data[CONF_NAME], self.config.entry_id):
-                        errors["base"] = ERROR_SCENE_NAME_EXISTS
-                    else:
-                        previous_name = self.config.data.get(CONF_NAME)
-                        self._async_save_entry()
-                        await self._async_stop_previous_animation_if_renamed(previous_name)
-                        await self.hass.config_entries.async_reload(self.config.entry_id)
-                        return self.async_create_entry(title="", data={})
+                    previous_name = self.config.data.get(CONF_NAME)
+                    self._async_save_entry()
+                    await self._async_stop_previous_animation_if_renamed(previous_name)
+                    await self.hass.config_entries.async_reload(self.config.entry_id)
+                    return self.async_create_entry(title="", data={})
 
         return self.async_show_form(
             step_id="color_rgb_ui",
