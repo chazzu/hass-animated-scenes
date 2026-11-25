@@ -74,7 +74,7 @@ For fractional frequency and transition ranges, sampled times are rounded to ten
 
 Set `change_frequency: 0` to change the lights once and then stop. Normal restore settings still apply: with `restore: true`, the lights immediately return to their previous settings, and `restore_power` controls whether lights that were off turn back off. Set `restore: false` to keep the new colors.
 
-When a higher-priority scene stops, or a higher-priority one-shot scene (`change_frequency: 0`) finishes, the light is handed back to the lower-priority running scene, which requests its color immediately. For each light, Animated Scenes waits for the previous light service call to finish before applying a handoff or restore. While a call is pending, periodic updates for that light are skipped. If the light is off and the returning scene has `ignore_off: false`, it stays off until turned on.
+When a higher-priority scene stops, or a higher-priority one-shot scene (`change_frequency: 0`) finishes, the light is handed back to the lower-priority running scene, which requests its color immediately. For each light, Animated Scenes waits for the previous light service call to finish before applying a handoff or restore. While a call is pending, periodic updates for that light are skipped. If the call is still pending after 30 seconds, Animated Scenes logs one warning with the light’s entity ID and continues waiting. If the light is off and the returning scene has `ignore_off: false`, it stays off until turned on.
 
 ## Color Configuration
 

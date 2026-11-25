@@ -118,6 +118,7 @@ class LightSnapshot:
 
 
 type OperationKind = Literal["color", "capture", "restore"]
+LIGHT_COMMAND_WARNING_SECONDS = 30
 SHUTDOWN_RESTORE_TIMEOUT = 10
 
 
@@ -935,8 +936,25 @@ class Animations:
         pending = deque([operation])
         self._light_writes[entity_id] = pending
 
+        warning_timer: asyncio.TimerHandle | None = None
+
+        def warn_if_pending(task: Task[None], kind: OperationKind) -> None:
+            """Report one slow light command while it retains its place in the queue."""
+            if not task.done():
+                _LOGGER.warning(
+                    "Light %s: %s command still pending after %s seconds. "
+                    "Later commands for this light will wait for it to finish.",
+                    entity_id,
+                    kind,
+                    LIGHT_COMMAND_WARNING_SECONDS,
+                )
+
         def advance(completed: Task[None] | None = None) -> None:
             """Consume completed work, including failures, before starting its successor."""
+            nonlocal warning_timer
+            if warning_timer is not None:
+                warning_timer.cancel()
+                warning_timer = None
             while True:
                 if (
                     completed is not None
@@ -953,6 +971,13 @@ class Animations:
                     pending[0].run(), f"animated_scenes_write_{entity_id}"
                 )
                 if not completed.done():
+                    if pending[0].kind != "capture":
+                        warning_timer = self.hass.loop.call_later(
+                            LIGHT_COMMAND_WARNING_SECONDS,
+                            warn_if_pending,
+                            completed,
+                            pending[0].kind,
+                        )
                     completed.add_done_callback(advance)
                     return
 

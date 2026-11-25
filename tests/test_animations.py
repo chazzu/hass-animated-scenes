@@ -1174,7 +1174,11 @@ async def test_priority_handoff_light_script_can_stop_another_scene(
     await manager.stop({CONF_NAME: "Low"})
 
 
-async def test_one_shot_handoff_applies_after_delayed_initial_write(hass: HomeAssistant) -> None:
+async def test_one_shot_handoff_applies_after_delayed_initial_write(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Restore the returning owner's color after a delayed one-shot service call."""
     await async_setup(hass, {})
     manager = hass.data[DOMAIN]
@@ -1204,10 +1208,20 @@ async def test_one_shot_handoff_applies_after_delayed_initial_write(hass: HomeAs
     applied.clear()
     data = {**_animation_config("One Shot", ["light.one"], priority=10), "change_frequency": 0}
 
+    monkeypatch.setattr(
+        "custom_components.animated_scenes.animations.LIGHT_COMMAND_WARNING_SECONDS", 0
+    )
     try:
         async with asyncio.timeout(2):
             await hass.services.async_call(DOMAIN, "start_animation", data, blocking=True)
             await entered_one_shot.wait()
+            # Let the already scheduled zero-delay warning run before releasing the handler.
+            timers_ran = asyncio.Event()
+            hass.loop.call_later(0, timers_ran.set)
+            await timers_ran.wait()
+        assert any(
+            "Light light.one: color command still pending" in message for message in caplog.messages
+        )
         assert manager.animations == {"Low": low}
         assert manager.light_owner["light.one"] is low
         assert applied == []
@@ -1216,6 +1230,12 @@ async def test_one_shot_handoff_applies_after_delayed_initial_write(hass: HomeAs
 
     await hass.async_block_till_done()
     assert applied == [(255, 0, 0), (0, 255, 0)]
+    assert (
+        sum(
+            "Light light.one: color command still pending" in message for message in caplog.messages
+        )
+        == 1
+    )
     await manager.stop({CONF_NAME: "Low"})
 
 
