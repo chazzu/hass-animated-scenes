@@ -121,7 +121,9 @@ def _convert_mireds_to_kelvin(mireds: int) -> int:
     return kelvin
 
 
-async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) -> None:
+async def safe_call(
+    hass: HomeAssistant, domain: str, service: str, attr: dict, blocking: bool = False
+) -> None:
     """Call a Home Assistant service safely, logging exceptions.
 
     This wrapper calls the given service on the Home Assistant instance
@@ -134,6 +136,7 @@ async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) 
         domain: Service domain (e.g. "light").
         service: Service name (e.g. "turn_on").
         attr: Service data/attributes to pass to the service.
+        blocking: Wait for the service handler to finish before returning.
 
     Returns:
         None
@@ -144,6 +147,7 @@ async def safe_call(hass: HomeAssistant, domain: str, service: str, attr: dict) 
             domain,
             service,
             attr,
+            blocking=blocking,
             context=Context(parent_id=ANIMATION_CONTEXT_PARENT_ID),
         )
     except (HomeAssistantError, vol.Invalid) as e:
@@ -766,12 +770,15 @@ class Animation:
         if light in self._active_lights:
             self._active_lights.remove(light)
 
-    async def update_light(self, entity_id: str, initial: bool = False) -> None:
+    async def update_light(
+        self, entity_id: str, initial: bool = False, handoff: bool = False
+    ) -> None:
         """Update a single light if this animation owns it.
 
         Args:
             entity_id: The light entity id to update.
             initial: If True, indicate this is the initial update.
+            handoff: Apply handoff policy and wait for the light service handler.
 
         Returns:
             None
@@ -787,12 +794,21 @@ class Animation:
                 self._name,
             )
             return
-        await safe_call(
-            self._hass,
-            LIGHT_DOMAIN,
-            SERVICE_TURN_ON,
-            self.build_light_attributes(entity_id, initial),
-        )
+        if handoff and not self._ignore_off:
+            light_state = self._hass.states.get(entity_id)
+            if light_state is None or light_state.state == "off":
+                return
+        attributes = self.build_light_attributes(entity_id, initial)
+        if handoff:
+            await safe_call(
+                self._hass,
+                LIGHT_DOMAIN,
+                SERVICE_TURN_ON,
+                attributes,
+                blocking=True,
+            )
+        else:
+            await safe_call(self._hass, LIGHT_DOMAIN, SERVICE_TURN_ON, attributes)
         return
 
     async def update_lights(self) -> None:
@@ -1072,7 +1088,7 @@ class Animations:
             light_state = self.hass.states.get(light)
             # An off light waits for the owner's ticks or an external turn-on.
             if light_state is not None and light_state.state != "off":
-                await owner.update_light(light, initial=True)
+                await owner.update_light(light, initial=True, handoff=True)
 
     async def stop(self, data: dict[str, Any]) -> None:
         """Stop a running animation identified by service data."""
@@ -1189,7 +1205,7 @@ class Animations:
                     animation.name,
                     light_owner.name,
                 )
-                await light_owner.update_light(entity_id, initial=True)
+                await light_owner.update_light(entity_id, initial=True, handoff=True)
                 return
         if animation.restore and not skip_restore and entity_id in self.states:
             previous_state = self.states[entity_id]

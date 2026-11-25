@@ -944,6 +944,110 @@ async def test_priority_handoff_applies_color_then_restores_original(
     assert manager.light_owner == {}
 
 
+async def test_priority_handoff_skips_off_light_for_ignore_off_owner(
+    hass: HomeAssistant,
+) -> None:
+    """Keep a handed-off light off when its new owner ignores off lights."""
+    manager = _runtime_manager(hass)
+    calls = register_light_services(hass)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    low = await _start(
+        manager,
+        "Low",
+        ["light.one"],
+        priority=1,
+        ignore_off=False,
+        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    )
+    await _start(manager, "High", ["light.one"], priority=10)
+    await hass.async_block_till_done()
+    hass.states.async_set("light.one", "off", {})
+    await hass.async_block_till_done()
+    calls.clear()
+
+    await manager.stop({CONF_NAME: "High"})
+    await hass.async_block_till_done()
+
+    assert manager.light_owner["light.one"] is low
+    assert calls == []
+    light_state = hass.states.get("light.one")
+    assert light_state is not None
+    assert light_state.state == "off"
+
+    hass.states.async_set("light.one", "on", {"rgb_color": (9, 9, 9)})
+    await hass.async_block_till_done()
+
+    assert [call["rgb_color"] for call in calls] == [(0, 255, 0)]
+    await manager.stop({CONF_NAME: "Low"})
+
+
+async def test_priority_handoff_waits_for_light_service_before_new_owner(
+    hass: HomeAssistant,
+) -> None:
+    """Serialize a delayed returning-owner write before a later scene starts."""
+    manager = _runtime_manager(hass)
+    entered_handoff = asyncio.Event()
+    entered_new_start = asyncio.Event()
+    finish_handoff = asyncio.Event()
+    applied: list[tuple[int, int, int]] = []
+    delay_green = False
+
+    async def turn_on(call: Any) -> None:
+        """Hold the handoff color until the competing start is queued."""
+        nonlocal delay_green
+        color = tuple(call.data["rgb_color"])
+        if delay_green and color == (0, 255, 0):
+            entered_handoff.set()
+            await finish_handoff.wait()
+        applied.append(color)
+
+    hass.services.async_register("light", "turn_on", turn_on)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    await _start(
+        manager,
+        "Low",
+        ["light.one"],
+        priority=1,
+        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    )
+    await _start(
+        manager,
+        "High",
+        ["light.one"],
+        priority=10,
+        colors=[{"color_type": "rgb_color", "color": (255, 0, 0)}],
+    )
+    delay_green = True
+
+    stopping = asyncio.create_task(manager.stop({CONF_NAME: "High"}))
+    await entered_handoff.wait()
+
+    async def start_newest() -> None:
+        """Signal that the competing manager operation is reaching the lock."""
+        entered_new_start.set()
+        await manager.start(
+            {
+                **_animation_config("Newest", ["light.one"], priority=20),
+                "colors": [{"color_type": "rgb_color", "color": (0, 0, 255)}],
+            }
+        )
+
+    starting = asyncio.create_task(start_newest())
+    await entered_new_start.wait()
+    for _ in range(3):
+        await asyncio.sleep(0)
+    assert not starting.done()
+
+    finish_handoff.set()
+    await stopping
+    await starting
+
+    assert applied[-1] == (0, 0, 255)
+    assert applied.index((0, 255, 0), 2) < len(applied) - 1
+    await manager.stop({CONF_NAME: "Newest"})
+    await manager.stop({CONF_NAME: "Low"})
+
+
 async def test_priority_handoff_applies_color_despite_one_change_per_tick(
     hass: HomeAssistant,
 ) -> None:
