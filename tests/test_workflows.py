@@ -79,10 +79,50 @@ def test_coverage_publication_serializes_without_cancelling() -> None:
 
 def test_privileged_comment_workflow_never_checks_out_pr_code() -> None:
     """Keep the workflow_run job from executing untrusted pull request content."""
-    job = _job("post_coverage_to_pr.yml", "test")
+    workflow = yaml.safe_load((WORKFLOWS / "post_coverage_to_pr.yml").read_text(encoding="utf-8"))
+    job = workflow["jobs"]["post_coverage_comment"]
 
     assert _write_scopes(job) == {"pull-requests"}
-    assert not [step for step in job["steps"] if "actions/checkout" in step.get("uses", "")]
+    assert not [
+        step
+        for workflow_job in workflow["jobs"].values()
+        for step in workflow_job["steps"]
+        if "actions/checkout" in step.get("uses", "")
+    ]
+
+
+def test_coverage_comments_serialize_per_pr_and_queue_all_runs() -> None:
+    """Keep each PR's coverage runs ordered without replacing queued work."""
+    job = _job("post_coverage_to_pr.yml", "post_coverage_comment")
+
+    assert job["concurrency"] == {
+        "group": "coverage-comment-pr-${{ needs.resolve_pull_request.outputs.pr_number }}",
+        "queue": "max",
+    }
+    assert job["needs"] == "resolve_pull_request"
+
+
+def test_coverage_comment_rechecks_head_inside_serialized_job() -> None:
+    """Skip stale workflow runs immediately before considering publication."""
+    job = _job("post_coverage_to_pr.yml", "post_coverage_comment")
+    eligibility = _step(job, "Check coverage comment eligibility")["with"]["script"]
+
+    assert "pullRequest.head.sha !== workflowRun.head_sha" in eligibility
+    assert eligibility.index("pullRequest.head.sha !== workflowRun.head_sha") < eligibility.index(
+        "listWorkflowRunArtifacts"
+    )
+
+
+def test_fork_coverage_runs_resolve_only_exact_open_pr_heads() -> None:
+    """Match fork runs by repository, branch, and exact commit before queueing."""
+    job = _job("post_coverage_to_pr.yml", "resolve_pull_request")
+    resolution = _step(job, "Resolve pull request for coverage run")["with"]["script"]
+
+    assert "workflowRun.pull_requests?.[0]?.number" in resolution
+    assert "candidate.state === 'open'" in resolution
+    assert "candidate.head.sha === workflowRun.head_sha" in resolution
+    assert "candidate.head.repo?.full_name === headRepository" in resolution
+    assert "candidate.head.ref === workflowRun.head_branch" in resolution
 
 
 def test_release_checks_out_full_history_at_tag_ref() -> None:

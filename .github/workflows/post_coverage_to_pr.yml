@@ -7,25 +7,20 @@ on:
       - completed
 
 jobs:
-  test:
-    name: Post coverage Comment to PR
+  resolve_pull_request:
+    name: Resolve coverage target PR
     runs-on: ubuntu-latest
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
     permissions:
-      # Gives the action the necessary permissions for publishing new
-      # comments in pull requests and editing its existing comments.
-      pull-requests: write
-      # Allows the action to read repository metadata without modifying content.
       contents: read
-      # Gives the action the necessary permissions for looking up the
-      # workflow that launched this workflow, and download the related
-      # artifact that contains the comment to be published
-      actions: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
     steps:
       # DO NOT run actions/checkout here, for security reasons
       # For details, refer to https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
-      - name: Check coverage comment eligibility
-        id: coverage_eligibility
+      - name: Resolve pull request for coverage run
+        id: resolve
         uses: actions/github-script@v8
         with:
           script: |
@@ -53,18 +48,50 @@ jobs:
                       candidate.head.ref === workflowRun.head_branch,
                   )
                 : undefined;
-              if (!match) {
-                core.setOutput('should_post', 'false');
-                return;
-              }
-              prNumber = match.number;
+              prNumber = match?.number;
             }
 
+            if (prNumber === undefined) {
+              core.info('Skipping coverage comment: no matching pull request was found.');
+              return;
+            }
+            core.setOutput('pr_number', String(prNumber));
+
+  post_coverage_comment:
+    name: Post coverage Comment to PR
+    runs-on: ubuntu-latest
+    needs: resolve_pull_request
+    if: needs.resolve_pull_request.outputs.pr_number != ''
+    concurrency:
+      group: coverage-comment-pr-${{ needs.resolve_pull_request.outputs.pr_number }}
+      queue: max
+    permissions:
+      # Gives the action the necessary permissions for publishing new
+      # comments in pull requests and editing its existing comments.
+      pull-requests: write
+      # Allows the action to read repository metadata without modifying content.
+      contents: read
+      # Gives the action permission to download the related artifact.
+      actions: read
+    steps:
+      - name: Check coverage comment eligibility
+        id: coverage_eligibility
+        uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ needs.resolve_pull_request.outputs.pr_number }}
+        with:
+          script: |
+            const workflowRun = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
             const { data: pullRequest } = await github.rest.pulls.get({
               owner,
               repo,
               pull_number: prNumber,
             });
+
+            // This check runs inside the per-PR concurrency group so stale queued runs cannot
+            // replace coverage from a newer head.
             if (pullRequest.head.sha !== workflowRun.head_sha) {
               core.info(
                 `Skipping coverage comment: PR head ${pullRequest.head.sha} no longer matches workflow run head ${workflowRun.head_sha}.`,
@@ -72,10 +99,11 @@ jobs:
               core.setOutput('should_post', 'false');
               return;
             }
+
             const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
               owner,
               repo,
-              run_id: context.payload.workflow_run.id,
+              run_id: workflowRun.id,
             });
             const labels = pullRequest.labels.map((label) => label.name);
             const hasCommentArtifact = artifacts.artifacts.some(
@@ -87,7 +115,6 @@ jobs:
               !labels.includes('dependencies') &&
               pullRequest.user?.type !== 'Bot';
 
-            core.setOutput('has_artifact', String(hasCommentArtifact));
             core.setOutput('should_post', String(shouldPost));
 
       - name: Post coverage Comment to PR

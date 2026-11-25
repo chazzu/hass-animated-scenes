@@ -904,6 +904,7 @@ class Animations:
         self._light_writes: dict[str, deque[LightOperation]] = {}
         self.light_owner: dict[str, Animation] = {}
         self._mutation_lock = asyncio.Lock()
+        self._shutting_down = False
         self.hass: HomeAssistant = hass
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._async_handle_hass_stop)
 
@@ -968,6 +969,7 @@ class Animations:
 
         """
         async with self._mutation_lock:
+            self._shutting_down = True
             for name in list(self.animations):
                 await self._stop_by_name_unlocked(name)
         restores = [
@@ -1093,6 +1095,8 @@ class Animations:
     async def start(self, data: dict[str, Any]) -> None:
         """Validate input and start a new animation from service data."""
         async with self._mutation_lock:
+            if self._shutting_down:
+                raise IntegrationError("Cannot start an animation while Home Assistant is stopping")
             await self._start_unlocked(data)
 
     async def _start_unlocked(self, data: dict[str, Any]) -> None:

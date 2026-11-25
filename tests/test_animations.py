@@ -642,29 +642,44 @@ async def test_update_lights_clamps_change_amount_to_active_lights(
     await manager.stop({CONF_NAME: "Spooky"})
 
 
-@pytest.mark.parametrize("change_amount", ["3", "[1, 3]"])
+@pytest.mark.parametrize(
+    ("change_amount", "expected", "selected"),
+    [("3", 3, None), ("[1, 3]", 1, 1), ("[1, 3]", 3, 3)],
+)
 async def test_start_service_accepts_text_change_amount(
     hass: HomeAssistant,
     change_amount: str,
+    expected: int,
+    selected: int | None,
 ) -> None:
     """Accept change_amount values submitted by the text service selector."""
     await async_setup(hass, {})
     assert hass.data[DOMAIN] is not None
     manager = hass.data[DOMAIN]
     register_light_services(hass)
-    hass.states.async_set("light.one", "on", LIGHT_ON)
+    lights = ["light.one", "light.two", "light.three"]
+    for light in lights:
+        hass.states.async_set(light, "on", LIGHT_ON)
 
-    await hass.services.async_call(
-        DOMAIN,
-        "start_animation",
-        {
-            **_animation_config("Spooky", ["light.one"]),
-            "change_amount": change_amount,
-        },
-        blocking=True,
-    )
-
-    assert manager.animations["Spooky"].get_change_amount() == 1
+    with patch(
+        "custom_components.animated_scenes.animations.randrange",
+        return_value=selected,
+    ) as select_amount:
+        await hass.services.async_call(
+            DOMAIN,
+            "start_animation",
+            {
+                **_animation_config("Spooky", lights),
+                "change_frequency": 3600,
+                "change_amount": change_amount,
+            },
+            blocking=True,
+        )
+        assert manager.animations["Spooky"].get_change_amount() == expected
+    if selected is None:
+        select_amount.assert_not_called()
+    else:
+        select_amount.assert_called_once()
     await manager.stop({"name": "Spooky"})
 
 
@@ -916,16 +931,21 @@ async def test_home_assistant_stop_ends_running_animations(hass: HomeAssistant) 
 async def test_shutdown_waits_only_for_pending_restores(hass: HomeAssistant, restore: bool) -> None:
     """Keep the integration's shutdown handler alive until its last restore finishes."""
     manager = _runtime_manager(hass)
-    entered = asyncio.Event()
-    finish = asyncio.Event()
+    entered_color = asyncio.Event()
+    finish_color = asyncio.Event()
+    entered_restore = asyncio.Event()
+    finish_restore = asyncio.Event()
     applied = []
 
     async def turn_on(call: ServiceCall) -> None:
         """Hold the one-shot color so its restore spans the start of shutdown."""
         color = call.data["rgb_color"]
         if color == (255, 0, 0):
-            entered.set()
-            await finish.wait()
+            entered_color.set()
+            await finish_color.wait()
+        elif color == (1, 2, 3):
+            entered_restore.set()
+            await finish_restore.wait()
         applied.append(color)
 
     hass.services.async_register("light", "turn_on", turn_on)
@@ -939,13 +959,22 @@ async def test_shutdown_waits_only_for_pending_restores(hass: HomeAssistant, res
                     "restore": restore,
                 }
             )
-            await entered.wait()
+            await entered_color.wait()
             stop = hass.async_create_task(
                 manager._async_handle_hass_stop(Event(EVENT_HOMEASSISTANT_STOP))
             )
+            await asyncio.sleep(0)
             assert stop.done() is (not restore)
+            finish_color.set()
+            if restore:
+                await entered_restore.wait()
+                with pytest.raises(IntegrationError, match="while Home Assistant is stopping"):
+                    await manager.start(_repeating_config("Late", ["light.one"]))
+                assert not stop.done()
+                finish_restore.set()
     finally:
-        finish.set()
+        finish_color.set()
+        finish_restore.set()
     await stop
     await hass.async_block_till_done()
     assert applied == ([(255, 0, 0), (1, 2, 3)] if restore else [(255, 0, 0)])
@@ -1391,6 +1420,7 @@ async def test_slow_light_handler_does_not_overlap_periodic_updates(
             assert active_handlers == 1
             finish_first.set()
             await hass.async_block_till_done()
+            assert call_count == 1
             await animation.update_lights()
             await hass.async_block_till_done()
     finally:
@@ -1399,7 +1429,7 @@ async def test_slow_light_handler_does_not_overlap_periodic_updates(
             await manager.stop({CONF_NAME: "Spooky"})
 
     assert maximum_active_handlers == 1
-    assert call_count >= 2
+    assert call_count == 2
 
 
 async def test_external_turn_on_updates_light_from_event_loop(hass: HomeAssistant) -> None:
@@ -1866,6 +1896,7 @@ async def test_restart_keeps_switch_and_activity_sensor_on(hass: HomeAssistant) 
 
     assert (switch_id, "off") not in observed
     assert (sensor_id, "0") not in observed
+    assert all(state == "1" for entity_id, state in observed if entity_id == sensor_id)
     switch_state = hass.states.get(switch_id)
     sensor_state = hass.states.get(sensor_id)
     assert switch_state is not None
