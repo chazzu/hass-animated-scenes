@@ -7,13 +7,13 @@ COMPONENT_COLOR_CONFIG_URL = "https://github.com/chazzu/hass-animated-scenes#col
 
 ATTR_COLOR_TEMP = "color_temp"  # Deprecated by HASS, will auto-convert to ATTR_COLOR_TEMP_KELVIN
 
-CONF_EXTERNAL_SWITCHES = "external_switches"
 
 CONF_ANIMATE_BRIGHTNESS = "animate_brightness"
 CONF_ANIMATE_COLOR = "animate_color"
 CONF_CHANGE_AMOUNT = "change_amount"
 CONF_CHANGE_FREQUENCY = "change_frequency"
 CONF_CHANGE_SEQUENCE = "change_sequence"
+CONF_LIGHTS = "lights"
 CONF_COLORS = "colors"
 CONF_COLOR = "color"
 CONF_COLOR_TYPE = "color_type"
@@ -46,15 +46,15 @@ ENTITY_ACTIVITY_SENSOR = "activty_sensor"
 DEFAULT_ACTIVITY_SENSOR_ICON = "mdi:pound-box"
 DEFAULT_ICON = "mdi:lightbulb-multiple-outline"
 DEFAULT_TRANSITION = 1
-DEFAULT_PRIORITY = 0
-DEFAULT_CHANGE_AMOUNT = "all"
+DEFAULT_PRIORITY = 100
+DEFAULT_CHANGE_AMOUNT = 1
 DEFAULT_CHANGE_FREQUENCY = 1
 DEFAULT_CHANGE_SEQUENCE = False
 DEFAULT_ANIMATE_BRIGHTNESS = True
 DEFAULT_ANIMATE_COLOR = True
 DEFAULT_IGNORE_OFF = True
 DEFAULT_RESTORE = True
-DEFAULT_RESTORE_POWER = False
+DEFAULT_RESTORE_POWER = True
 DEFAULT_BRIGHTNESS = 255
 
 DEFAULT_COLOR_NEARBY_COLORS = 0
@@ -63,17 +63,22 @@ DEFAULT_COLOR_WEIGHT = 10
 DEFAULT_COLOR_ADD_COLOR = False
 DEFAULT_COLOR_DELETE_COLOR = False
 
-DEFAULT_MIN_BRIGHT = 70
-DEFAULT_MAX_BRIGHT = 100
 
 CHANGE_FREQUENCY_MIN = 0
-CHANGE_FREQUENCY_MAX = 60
+CHANGE_FREQUENCY_REPEAT_MIN = 0.1
+CHANGE_FREQUENCY_MAX = 3600
 TRANSITION_MIN = 0
 TRANSITION_MAX = 6553
 CHANGE_AMOUNT_MIN = 0
 CHANGE_AMOUNT_MAX = 65535
 BRIGHTNESS_MIN = 0
 BRIGHTNESS_MAX = 255
+# Priorities are persisted in config entries, which cannot store integers
+# beyond 64 bits, so keep them inside a generous but storable range.
+PRIORITY_MIN = -1_000_000_000
+PRIORITY_MAX = 1_000_000_000
+# Upper bound for mired and kelvin color temperatures in YAML colors.
+COLOR_TEMPERATURE_MAX = 1_000_000
 
 ERROR_CHANGE_AMOUNT_NOT_INT_OR_ALL = "change_amount_not_int_or_all"
 ERROR_CHANGE_FREQUENCY_NOT_INT_OR_RANGE = "change_frequency_not_int_or_range"
@@ -81,13 +86,19 @@ ERROR_TRANSITION_NOT_INT_OR_RANGE = "transition_not_int_or_range"
 ERROR_COLORS_IS_BLANK = "colors_is_blank"
 ERROR_COLORS_MALFORMED = "colors_malformed"
 ERROR_BRIGHTNESS_NOT_INT_OR_RANGE = "brightness_not_int_or_range"
+ERROR_PRIORITY_NOT_INT = "priority_not_int"
 ERROR_MUST_SELECT_LIGHTS = "must_select_lights"
+ERROR_SCENE_NAME_BLANK = "scene_name_blank"
+ERROR_SCENE_NAME_EXISTS = "scene_name_exists"
 ABORT_ACTIVITY_SENSOR_NO_OPTIONS = "activity_sensor_no_options"
-ABORT_INTEGRATION_NO_OPTIONS = "integration_no_options"
+ABORT_ACTIVITY_SENSOR_EXISTS = "activity_sensor_exists"
+ABORT_IMPORT_INVALID = "import_invalid"
+ABORT_IMPORT_SCENE_NAME_EXISTS = "scene_name_exists"
 
 EVENT_NAME_CHANGE = "animated_scenes_change"
 EVENT_STATE_STARTED = "started"
 EVENT_STATE_STOPPED = "stopped"
+EVENT_STATE_UPDATED = "updated"
 
 MIN_KELVIN = 1500
 MAX_KELVIN = 9000

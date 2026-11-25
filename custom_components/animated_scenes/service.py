@@ -1,9 +1,6 @@
 """Service handlers for the Animated Scenes integration.
 
-This module exposes async service entry points that delegate to the
-Animations singleton. Each function logs the requested operation and
-passes the service call data through to the corresponding Animations
-method.
+Service registration binds each handler to its Home Assistant instance's manager.
 """
 
 import logging
@@ -15,49 +12,25 @@ from .animations import Animations
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-async def start_animation(call: ServiceCall) -> None:
-    """Start an animation using the provided service call data.
-
-    The service call's data mapping is forwarded to
-    `Animations.instance.start`.
-    """
-
+async def start_animation(manager: Animations, call: ServiceCall) -> None:
+    """Start an animation using the provided service call data."""
     _LOGGER.info("Starting animated lights...")
-    if Animations.instance:
-        await Animations.instance.start(call.data)
+    await manager.start(call.data)
 
 
-async def stop_animation(call: ServiceCall) -> None:
-    """Stop an animation using the provided service call data.
-
-    The service call's data mapping is forwarded to
-    `Animations.instance.stop`.
-    """
-
+async def stop_animation(manager: Animations, call: ServiceCall) -> None:
+    """Stop an animation using the provided service call data."""
     _LOGGER.info("Stopping animated lights...")
-    if Animations.instance:
-        await Animations.instance.stop(call.data)
+    await manager.stop(call.data)
 
 
-async def remove_lights(call: ServiceCall) -> None:
-    """Remove one or more lights from their animations.
-
-    The service call's data mapping is forwarded to
-    `Animations.instance.remove_lights`.
-    """
-
+async def remove_lights(manager: Animations, call: ServiceCall) -> None:
+    """Remove one or more lights from their animations."""
     _LOGGER.info("Removing lights from animations...")
-    if Animations.instance:
-        await Animations.instance.remove_lights(call.data)
+    await manager.remove_lights(call.data)
 
 
-async def add_lights_to_animation(call: ServiceCall) -> None:
-    """Add lights to an existing animation using the service data.
-
-    Forwards the service call data to
-    `Animations.instance.add_lights_to_animation`.
-    """
-
+async def add_lights_to_animation(manager: Animations, call: ServiceCall) -> None:
+    """Add lights to an existing animation using the service data."""
     _LOGGER.info("Adding lights to animation...")
-    if Animations.instance:
-        await Animations.instance.add_lights_to_animation(call.data)
+    await manager.add_lights_to_animation(call.data)
