@@ -248,6 +248,7 @@ class Animation:
         self._hass = manager.hass
         self._ignore_off: bool = config[CONF_IGNORE_OFF]
         self._lights: list[str] = config[CONF_LIGHTS]
+        self._deferred_initial: dict[str, LightAttributes] = {}
         self._light_status: dict[str, Any] = {}
         self._priority: int = config[CONF_PRIORITY]
         self._restore: bool = config[CONF_RESTORE]
@@ -789,6 +790,7 @@ class Animation:
 
     def remove_light(self, light: str) -> None:
         """Remove a light from this animation's configured and active lists."""
+        self._deferred_initial.pop(light, None)
         if light in self._lights:
             self._lights.remove(light)
         if light in self._active_lights:
@@ -800,6 +802,7 @@ class Animation:
         initial: bool = False,
         *,
         skip_if_busy: bool = False,
+        defer_if_off: bool = False,
     ) -> None:
         """Update a single light if this animation owns it.
 
@@ -807,6 +810,7 @@ class Animation:
             entity_id: The light entity id to update.
             initial: If True, indicate this is the initial update.
             skip_if_busy: Drop this periodic update if a write is still pending.
+            defer_if_off: Preserve an off light during a dropped restart handoff.
 
         Returns:
             None
@@ -829,11 +833,15 @@ class Animation:
             # One-shots intentionally release ownership before their color finishes.
             if self._change_frequency and manager.get_animation_for_light(entity_id) is not self:
                 return
-            if not self._ignore_off:
+            if not self._ignore_off or defer_if_off:
                 state = self._hass.states.get(entity_id)
                 if state is None or state.state == "off":
+                    if initial and self._change_frequency:
+                        self._deferred_initial[entity_id] = attributes
                     return
-            await safe_call(self._hass, LIGHT_DOMAIN, SERVICE_TURN_ON, attributes, blocking=True)
+            deferred = self._deferred_initial.pop(entity_id, None)
+            command = deferred if deferred is not None and not initial else attributes
+            await safe_call(self._hass, LIGHT_DOMAIN, SERVICE_TURN_ON, command, blocking=True)
 
         manager.queue_light_operation(entity_id, LightOperation(apply, "color"))
 
@@ -1202,10 +1210,7 @@ class Animations:
                 continue
             self.light_owner[light] = owner
             _LOGGER.info("Handing light %s to %s after restart", light, owner.name)
-            light_state = self.hass.states.get(light)
-            # An off light waits for the owner's ticks or an external turn-on.
-            if light_state is not None and light_state.state != "off":
-                await owner.update_light(light, initial=True)
+            await owner.update_light(light, initial=True, defer_if_off=True)
 
     async def stop(self, data: dict[str, Any]) -> None:
         """Stop a running animation identified by service data."""

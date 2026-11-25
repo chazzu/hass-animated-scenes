@@ -1031,8 +1031,10 @@ async def test_priority_handoff_applies_color_then_restores_original(
     assert manager.light_owner == {}
 
 
+@pytest.mark.parametrize("animate_color", [True, False])
 async def test_priority_handoff_skips_off_light_for_ignore_off_owner(
     hass: HomeAssistant,
+    animate_color: bool,
 ) -> None:
     """Keep a handed-off light off when its new owner ignores off lights."""
     manager = _runtime_manager(hass)
@@ -1044,6 +1046,7 @@ async def test_priority_handoff_skips_off_light_for_ignore_off_owner(
         ["light.one"],
         priority=1,
         ignore_off=False,
+        animate_color=animate_color,
         colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
     )
     await _start(manager, "High", ["light.one"], priority=10)
@@ -1064,6 +1067,13 @@ async def test_priority_handoff_skips_off_light_for_ignore_off_owner(
     await hass.async_block_till_done()
 
     assert [call["rgb_color"] for call in calls] == [(0, 255, 0)]
+    calls.clear()
+    hass.states.async_set("light.one", "off")
+    await hass.async_block_till_done()
+    hass.states.async_set("light.one", "on", {"rgb_color": (9, 9, 9)})
+    await hass.async_block_till_done()
+    assert len(calls) == 1
+    assert ("rgb_color" in calls[0]) is animate_color
     await manager.stop({CONF_NAME: "Low"})
 
 
@@ -1945,6 +1955,7 @@ async def test_restart_skipping_off_light_hands_it_to_lower_scene(hass: HomeAssi
         "Low",
         ["light.one"],
         priority=50,
+        animate_color=False,
         colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
     )
     await _start(manager, "High", ["light.one"], priority=100)
