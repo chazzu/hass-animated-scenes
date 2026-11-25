@@ -771,45 +771,45 @@ class Animation:
             self._active_lights.remove(light)
 
     async def update_light(
-        self, entity_id: str, initial: bool = False, handoff: bool = False
+        self,
+        entity_id: str,
+        initial: bool = False,
+        handoff: bool = False,
+        *,
+        skip_if_busy: bool = False,
     ) -> None:
         """Update a single light if this animation owns it.
 
         Args:
             entity_id: The light entity id to update.
             initial: If True, indicate this is the initial update.
-            handoff: Apply handoff policy and wait for the light service handler.
+            handoff: Apply the off-light policy when the handoff write runs.
+            skip_if_busy: Drop this periodic update if a write is still pending.
 
         Returns:
             None
 
         """
-        if (
-            Animations.instance
-            and Animations.instance.get_animation_for_light(entity_id) is not self
-        ):
+        manager = Animations.instance
+        if manager and manager.get_animation_for_light(entity_id) is not self:
             _LOGGER.info(
                 "Skipping light %s due to conflicting animation with higher priority, %s",
                 entity_id,
                 self._name,
             )
             return
-        if handoff and not self._ignore_off:
-            light_state = self._hass.states.get(entity_id)
-            if light_state is None or light_state.state == "off":
-                return
+        if skip_if_busy and manager and manager.is_light_write_pending(entity_id):
+            return
         attributes = self.build_light_attributes(entity_id, initial)
-        if handoff:
-            await safe_call(
-                self._hass,
-                LIGHT_DOMAIN,
+        if manager:
+            manager.queue_light_write(
+                entity_id,
                 SERVICE_TURN_ON,
                 attributes,
-                blocking=True,
+                respect_off=handoff and not self._ignore_off,
             )
         else:
             await safe_call(self._hass, LIGHT_DOMAIN, SERVICE_TURN_ON, attributes)
-        return
 
     async def update_lights(self) -> None:
         """Select lights to update this tick and apply updates concurrently."""
@@ -823,7 +823,7 @@ class Animation:
         if self._current_color_index >= len(self._colors):
             self._current_color_index = 0
 
-        updates: list = [self.update_light(light) for light in lights_to_change]
+        updates = [self.update_light(light, skip_if_busy=True) for light in lights_to_change]
         await asyncio.gather(*updates)
 
     async def start(self) -> None:
@@ -879,10 +879,68 @@ class Animations:
         self.states: dict[str, Any] = {}
         self._external_light_listener: Callable[[], None] | None = None
         self._light_animations: dict[str, list[Animation]] = {}
+        self._light_writes: dict[str, asyncio.Future[None]] = {}
         self.light_owner: dict[str, Animation] = {}
         self._mutation_lock = asyncio.Lock()
         self.hass: HomeAssistant = hass
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._async_handle_hass_stop)
+
+    def is_light_write_pending(self, entity_id: str) -> bool:
+        """Return whether a write to the light is queued or in progress."""
+        return entity_id in self._light_writes
+
+    def queue_light_write(
+        self,
+        entity_id: str,
+        service: str,
+        attributes: LightAttributes,
+        *,
+        respect_off: bool = False,
+    ) -> None:
+        """Schedule a light service call after earlier writes to this light finish.
+
+        Args:
+            entity_id: Light whose writes must finish in submission order.
+            service: Light service name to call.
+            attributes: Service data to pass to Home Assistant.
+            respect_off: Skip the write if the light is off when dispatch starts.
+        """
+        previous = self._light_writes.get(entity_id)
+        completion: asyncio.Future[None] = self.hass.loop.create_future()
+        self._light_writes[entity_id] = completion
+
+        async def write() -> None:
+            """Wait for the prior handler to finish, regardless of its result."""
+            if previous is not None and not previous.done():
+                await asyncio.shield(previous)
+            if respect_off:
+                state = self.hass.states.get(entity_id)
+                if state is None or state.state == "off":
+                    return
+            await safe_call(self.hass, LIGHT_DOMAIN, service, attributes, blocking=True)
+
+        def finish(_: asyncio.Future[None] | None = None) -> None:
+            """Signal the successor and clear the tail if this was the last write."""
+            if self._light_writes.get(entity_id) is completion:
+                self._light_writes.pop(entity_id)
+            completion.set_result(None)
+
+        def complete(task: Task[None]) -> None:
+            """Report handler errors and advance the queue after the predecessor."""
+            if not task.cancelled() and (error := task.exception()) is not None:
+                _LOGGER.error("Error calling light.%s for %s", service, entity_id, exc_info=error)
+            # A task cancelled before its turn must leave its predecessor in order.
+            if previous is not None and not previous.done():
+                previous.add_done_callback(finish)
+            else:
+                finish()
+
+        # Preserve immediate writes while keeping any suspension inside the task.
+        task = self.hass.async_create_task(write(), f"animated_scenes_write_{entity_id}")
+        if task.done():
+            complete(task)
+        else:
+            task.add_done_callback(complete)
 
     async def _async_handle_hass_stop(self, _: Event) -> None:
         """Stop every running animation when Home Assistant shuts down.
@@ -1210,14 +1268,13 @@ class Animations:
         if animation.restore and not skip_restore and entity_id in self.states:
             previous_state = self.states[entity_id]
             if previous_state.state == "on":
-                await safe_call(
-                    self.hass,
-                    LIGHT_DOMAIN,
+                self.queue_light_write(
+                    entity_id,
                     SERVICE_TURN_ON,
                     self.build_attributes_from_state(previous_state),
                 )
             elif animation.restore_power:
-                await safe_call(self.hass, LIGHT_DOMAIN, SERVICE_TURN_OFF, {"entity_id": entity_id})
+                self.queue_light_write(entity_id, SERVICE_TURN_OFF, {"entity_id": entity_id})
         self.states.pop(entity_id, None)
         self.light_owner.pop(entity_id, None)
         if not animations_for_light:

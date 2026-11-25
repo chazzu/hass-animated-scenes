@@ -72,7 +72,7 @@ To edit a scene later, open the scene entry from **Settings > Devices & Services
 
 Set `change_frequency: 0` to change the lights once and then stop. Normal restore settings still apply: with `restore: true`, the lights immediately return to their previous settings, and `restore_power` controls whether lights that were off turn back off. Set `restore: false` to keep the new colors.
 
-When a higher-priority scene stops, or a higher-priority one-shot scene (`change_frequency: 0`) finishes, the light is handed back to the lower-priority running scene, which applies its color right away.
+When a higher-priority scene stops, or a higher-priority one-shot scene (`change_frequency: 0`) finishes, the light is handed back to the lower-priority running scene, which requests its color immediately. The light service may take time to apply that request. If the light is off and the returning scene has `ignore_off: false`, it stays off until turned on.
 
 ## Color Configuration
 

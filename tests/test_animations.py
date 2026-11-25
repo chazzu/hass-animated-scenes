@@ -12,9 +12,11 @@ from unittest.mock import AsyncMock, patch
 
 from homeassistant.config_entries import ConfigEntry, DiscoveryKey
 from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import IntegrationError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.config_validation import SCRIPT_SCHEMA
+from homeassistant.helpers.script import Script
 from homeassistant.util.color import (
     color_hs_to_RGB,
     color_rgbw_to_rgb,
@@ -507,12 +509,12 @@ async def test_update_skips_light_removed_after_tick_selection(hass: HomeAssista
     continue_selected_update = asyncio.Event()
     original_update_light = animation.update_light
 
-    async def pause_removed_light(entity_id: str, initial: bool = False) -> None:
+    async def pause_removed_light(entity_id: str, *, skip_if_busy: bool = False) -> None:
         """Pause the selected light until its ownership has been removed."""
         if entity_id == "light.one":
             selected_update_started.set()
             await continue_selected_update.wait()
-        await original_update_light(entity_id, initial)
+        await original_update_light(entity_id, skip_if_busy=skip_if_busy)
 
     with patch.object(animation, "update_light", side_effect=pause_removed_light):
         update_task = asyncio.create_task(animation.update_lights())
@@ -536,17 +538,16 @@ async def test_concurrent_same_name_start_replaces_only_after_startup(
     hass.states.async_set("light.one", "on", LIGHT_ON)
     initial_update_started = asyncio.Event()
     continue_initial_update = asyncio.Event()
-    call_count = 0
+    start = Animation.start
 
-    async def pause_first_update(*_: object) -> None:
-        """Pause only the first light service call across both starts."""
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
+    async def pause_first_start(animation: Animation) -> None:
+        """Pause the first manager startup before its animation task exists."""
+        if not initial_update_started.is_set():
             initial_update_started.set()
             await continue_initial_update.wait()
+        await start(animation)
 
-    with patch("custom_components.animated_scenes.animations.safe_call", pause_first_update):
+    with patch.object(Animation, "start", pause_first_start):
         first_start = asyncio.create_task(manager.start(_animation_config("Spooky", ["light.one"])))
         await initial_update_started.wait()
         original = manager.animations["Spooky"]
@@ -578,13 +579,15 @@ async def test_remove_final_light_waits_for_startup_and_leaves_no_empty_task(
     hass.states.async_set("light.one", "on", LIGHT_ON)
     initial_update_started = asyncio.Event()
     continue_initial_update = asyncio.Event()
+    start = Animation.start
 
-    async def pause_initial_update(*_: object) -> None:
-        """Pause the startup light service call until removal is waiting."""
+    async def pause_start(animation: Animation) -> None:
+        """Pause manager startup until removal is waiting."""
         initial_update_started.set()
         await continue_initial_update.wait()
+        await start(animation)
 
-    with patch("custom_components.animated_scenes.animations.safe_call", pause_initial_update):
+    with patch.object(Animation, "start", pause_start):
         start_task = asyncio.create_task(manager.start(_animation_config("Spooky", ["light.one"])))
         await initial_update_started.wait()
         animation = manager.animations["Spooky"]
@@ -981,21 +984,19 @@ async def test_priority_handoff_skips_off_light_for_ignore_off_owner(
     await manager.stop({CONF_NAME: "Low"})
 
 
-async def test_priority_handoff_waits_for_light_service_before_new_owner(
+async def test_priority_handoff_write_finishes_before_new_owner_write(
     hass: HomeAssistant,
 ) -> None:
-    """Serialize a delayed returning-owner write before a later scene starts."""
+    """Apply the returning owner's write first while letting a newer scene start."""
     manager = _runtime_manager(hass)
     entered_handoff = asyncio.Event()
-    entered_new_start = asyncio.Event()
     finish_handoff = asyncio.Event()
     applied: list[tuple[int, int, int]] = []
     delay_green = False
 
-    async def turn_on(call: Any) -> None:
+    async def turn_on(call: ServiceCall) -> None:
         """Hold the handoff color until the competing start is queued."""
-        nonlocal delay_green
-        color = tuple(call.data["rgb_color"])
+        color = call.data["rgb_color"]
         if delay_green and color == (0, 255, 0):
             entered_handoff.set()
             await finish_handoff.wait()
@@ -1017,34 +1018,121 @@ async def test_priority_handoff_waits_for_light_service_before_new_owner(
         priority=10,
         colors=[{"color_type": "rgb_color", "color": (255, 0, 0)}],
     )
+    await hass.async_block_till_done()
     delay_green = True
+    applied.clear()
 
-    stopping = asyncio.create_task(manager.stop({CONF_NAME: "High"}))
-    await entered_handoff.wait()
+    try:
+        async with asyncio.timeout(2):
+            await manager.stop({CONF_NAME: "High"})
+            await entered_handoff.wait()
+            newest = await _start(
+                manager,
+                "Newest",
+                ["light.one"],
+                priority=20,
+                colors=[{"color_type": "rgb_color", "color": (0, 0, 255)}],
+            )
+        assert manager.light_owner["light.one"] is newest
+        assert applied == []
+    finally:
+        finish_handoff.set()
 
-    async def start_newest() -> None:
-        """Signal that the competing manager operation is reaching the lock."""
-        entered_new_start.set()
-        await manager.start(
-            {
-                **_animation_config("Newest", ["light.one"], priority=20),
-                "colors": [{"color_type": "rgb_color", "color": (0, 0, 255)}],
-            }
-        )
-
-    starting = asyncio.create_task(start_newest())
-    await entered_new_start.wait()
-    for _ in range(3):
-        await asyncio.sleep(0)
-    assert not starting.done()
-
-    finish_handoff.set()
-    await stopping
-    await starting
-
-    assert applied[-1] == (0, 0, 255)
-    assert applied.index((0, 255, 0), 2) < len(applied) - 1
+    await hass.async_block_till_done()
+    assert applied == [(0, 255, 0), (0, 0, 255)]
     await manager.stop({CONF_NAME: "Newest"})
+    await manager.stop({CONF_NAME: "Low"})
+
+
+async def test_priority_handoff_light_script_can_stop_another_scene(
+    hass: HomeAssistant,
+) -> None:
+    """Complete a nested Animated Scenes service from a handoff's light handler."""
+    await async_setup(hass, {})
+    manager = Animations.instance
+    assert manager is not None
+    script = Script(
+        hass,
+        SCRIPT_SCHEMA([{"action": f"{DOMAIN}.stop_animation", "data": {CONF_NAME: "Third"}}]),
+        "Light action",
+        "template",
+    )
+    nested_action_finished = asyncio.Event()
+    run_nested_action = False
+
+    async def turn_on(call: ServiceCall) -> None:
+        """Execute the blocking script action on Low's handoff color."""
+        if run_nested_action and call.data["rgb_color"] == (0, 255, 0):
+            await script.async_run(context=call.context)
+            nested_action_finished.set()
+
+    hass.services.async_register("light", "turn_on", turn_on)
+    for light in ("light.one", "light.two"):
+        hass.states.async_set(light, "on", LIGHT_ON)
+    low = await _start(
+        manager,
+        "Low",
+        ["light.one"],
+        priority=1,
+        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    )
+    await _start(manager, "High", ["light.one"], priority=10)
+    await _start(manager, "Third", ["light.two"])
+    await hass.async_block_till_done()
+    run_nested_action = True
+
+    async with asyncio.timeout(2):
+        await hass.services.async_call(DOMAIN, "stop_animation", {CONF_NAME: "High"}, blocking=True)
+        await nested_action_finished.wait()
+
+    assert manager.animations == {"Low": low}
+    assert manager.light_owner == {"light.one": low}
+    assert set(manager.states) == {"light.one"}
+    await manager.stop({CONF_NAME: "Low"})
+
+
+async def test_one_shot_handoff_applies_after_delayed_initial_write(hass: HomeAssistant) -> None:
+    """Restore the returning owner's color after a delayed one-shot service call."""
+    await async_setup(hass, {})
+    manager = Animations.instance
+    assert manager is not None
+    entered_one_shot = asyncio.Event()
+    finish_one_shot = asyncio.Event()
+    applied: list[tuple[int, int, int]] = []
+
+    async def turn_on(call: ServiceCall) -> None:
+        """Delay the one-shot color before recording the applied writes."""
+        color = call.data["rgb_color"]
+        if color == (255, 0, 0):
+            entered_one_shot.set()
+            await finish_one_shot.wait()
+        applied.append(color)
+
+    hass.services.async_register("light", "turn_on", turn_on)
+    hass.states.async_set("light.one", "on", LIGHT_ON)
+    low = await _start(
+        manager,
+        "Low",
+        ["light.one"],
+        priority=1,
+        colors=[{"color_type": "rgb_color", "color": (0, 255, 0)}],
+    )
+    await hass.async_block_till_done()
+    applied.clear()
+    data = {**_animation_config("One Shot", ["light.one"], priority=10), "change_frequency": 0}
+
+    try:
+        async with asyncio.timeout(2):
+            await hass.services.async_call(DOMAIN, "start_animation", data, blocking=True)
+            await entered_one_shot.wait()
+        assert manager.animations == {"Low": low}
+        assert manager.light_owner == {"light.one": low}
+        assert applied == []
+    finally:
+        finish_one_shot.set()
+
+    await hass.async_block_till_done()
+    assert applied == [(255, 0, 0), (0, 255, 0)]
     await manager.stop({CONF_NAME: "Low"})
 
 
