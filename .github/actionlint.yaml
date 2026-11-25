@@ -1,0 +1,5 @@
+paths:
+  .github/workflows/post_coverage_to_pr.yml:
+    ignore:
+      # actionlint v1.7.12 does not recognize GitHub's documented concurrency queue key.
+      - '^unexpected key "queue" for "concurrency" section\.'
