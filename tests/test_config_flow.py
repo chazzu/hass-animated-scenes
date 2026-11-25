@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import logging
@@ -11,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigFlowResult
 from homeassistant.const import CONF_BRIGHTNESS, CONF_LIGHTS, CONF_NAME
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -81,10 +83,12 @@ def _options_flow(
     color_rgb_dict: dict[str, dict[str, object]] | None = None,
     omit: tuple[str, ...] = (),
     extra: dict[str, object] | None = None,
+    entry_id: str = "spooky",
+    name: str = "Spooky",
 ) -> tuple[AnimatedScenesOptionsFlowHandler, MockConfigEntry]:
     """Return an options flow and its backing scene config entry."""
     data: dict[str, object] = {
-        CONF_NAME: "Spooky",
+        CONF_NAME: name,
         CONF_ENTITY_TYPE: ENTITY_SCENE,
         CONF_COLOR_SELECTOR_MODE: selector_mode,
         CONF_LIGHTS: ["light.one"],
@@ -105,9 +109,9 @@ def _options_flow(
         data.pop(key, None)
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title="Spooky",
+        title=name,
         data=data,
-        entry_id="spooky",
+        entry_id=entry_id,
     )
     entry.add_to_hass(hass)
     flow = AnimatedScenesOptionsFlowHandler(entry)
@@ -449,6 +453,9 @@ async def test_options_rename_rechecks_duplicate_name_before_update(
     _existing_scene(hass, "Scary", "competing")
 
     with (
+        patch.object(
+            flow, "_async_stop_previous_animation_if_renamed", AsyncMock()
+        ) as stop_previous,
         patch.object(hass.config_entries, "async_update_entry") as update_entry,
         patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload_entry,
     ):
@@ -462,7 +469,106 @@ async def test_options_rename_rechecks_duplicate_name_before_update(
     assert result["errors"] == {"base": ERROR_SCENE_NAME_EXISTS}
     update_entry.assert_not_called()
     reload_entry.assert_not_awaited()
+    stop_previous.assert_not_awaited()
     assert entry.data[CONF_NAME] == "Spooky"
+
+
+async def test_concurrent_yaml_options_renames_keep_names_unique(
+    hass: HomeAssistant,
+) -> None:
+    """Allow only one concurrent YAML options flow to claim a name."""
+    _, first_entry = _options_flow(hass)
+    _, second_entry = _options_flow(
+        hass, extra={"icon": "mdi:home"}, entry_id="other", name="Creepy"
+    )
+    manager = Animations(hass)
+    Animations.instance = manager
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    for name in ("Spooky", "Creepy"):
+        await manager.start(
+            {
+                CONF_NAME: name,
+                CONF_LIGHTS: ["light.one"],
+                CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+                "change_frequency": 3600,
+            }
+        )
+    first = await hass.config_entries.options.async_init(first_entry.entry_id)
+    second = await hass.config_entries.options.async_init(second_entry.entry_id)
+    first = await hass.config_entries.options.async_configure(
+        first["flow_id"], {CONF_NAME: "Scary"}
+    )
+    second = await hass.config_entries.options.async_configure(
+        second["flow_id"], {CONF_NAME: "Scary"}
+    )
+
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()):
+        results = await asyncio.gather(
+            hass.config_entries.options.async_configure(
+                first["flow_id"],
+                {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]},
+            ),
+            hass.config_entries.options.async_configure(
+                second["flow_id"],
+                {CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}]},
+            ),
+        )
+
+    assert [result["type"] for result in results].count(FlowResultType.CREATE_ENTRY) == 1
+    assert sum(entry.data[CONF_NAME] == "Scary" for entry in (first_entry, second_entry)) == 1
+    rejected = next(result for result in results if result["type"] == "form")
+    assert rejected["errors"] == {"base": ERROR_SCENE_NAME_EXISTS}
+
+
+async def test_concurrent_rgb_options_renames_keep_names_unique(
+    hass: HomeAssistant,
+) -> None:
+    """Allow only one concurrent RGB options flow to claim a name."""
+    _, first_entry = _options_flow(hass, selector_mode=COLOR_SELECTOR_RGB_UI)
+    _, second_entry = _options_flow(
+        hass,
+        selector_mode=COLOR_SELECTOR_RGB_UI,
+        extra={"icon": "mdi:home"},
+        entry_id="other",
+        name="Creepy",
+    )
+    manager = Animations(hass)
+    Animations.instance = manager
+    register_light_services(hass)
+    hass.states.async_set("light.one", "on", {"color_mode": "rgb", "rgb_color": (1, 2, 3)})
+    for name in ("Spooky", "Creepy"):
+        await manager.start(
+            {
+                CONF_NAME: name,
+                CONF_LIGHTS: ["light.one"],
+                CONF_COLORS: [{"color_type": "rgb_color", "color": [255, 0, 0]}],
+                "change_frequency": 3600,
+            }
+        )
+    first = await hass.config_entries.options.async_init(first_entry.entry_id)
+    second = await hass.config_entries.options.async_init(second_entry.entry_id)
+    first = await hass.config_entries.options.async_configure(
+        first["flow_id"], {CONF_NAME: "Scary"}
+    )
+    second = await hass.config_entries.options.async_configure(
+        second["flow_id"], {CONF_NAME: "Scary"}
+    )
+
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()):
+        results = await asyncio.gather(
+            hass.config_entries.options.async_configure(
+                first["flow_id"], {CONF_COLOR: [255, 0, 0]}
+            ),
+            hass.config_entries.options.async_configure(
+                second["flow_id"], {CONF_COLOR: [255, 0, 0]}
+            ),
+        )
+
+    assert [result["type"] for result in results].count(FlowResultType.CREATE_ENTRY) == 1
+    assert sum(entry.data[CONF_NAME] == "Scary" for entry in (first_entry, second_entry)) == 1
+    rejected = next(result for result in results if result["type"] == "form")
+    assert rejected["errors"] == {"base": ERROR_SCENE_NAME_EXISTS}
 
 
 @pytest.mark.parametrize(
