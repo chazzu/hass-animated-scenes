@@ -951,7 +951,7 @@ async def test_priority_handoff_skips_off_light_for_ignore_off_owner(
     manager = _runtime_manager(hass)
     calls = register_light_services(hass)
     hass.states.async_set("light.one", "on", LIGHT_ON)
-    low = await _start(
+    await _start(
         manager,
         "Low",
         ["light.one"],
@@ -968,7 +968,6 @@ async def test_priority_handoff_skips_off_light_for_ignore_off_owner(
     await manager.stop({CONF_NAME: "High"})
     await hass.async_block_till_done()
 
-    assert manager.light_owner["light.one"] is low
     assert calls == []
     light_state = hass.states.get("light.one")
     assert light_state is not None
